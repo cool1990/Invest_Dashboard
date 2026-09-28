@@ -131,6 +131,11 @@
    "unit": "指数",
    "freq": "月"
   },
+  "DGDSRC1": {
+   "name": "PCE 商品（名义）",
+   "unit": "十亿美元（年化）",
+   "freq": "月"
+  },
   "DGDSRG3M086SBEA": {
    "ok": true,
    "first_obs": "1959-01-01",
@@ -140,6 +145,11 @@
    "name": "PCE 商品价格指数",
    "unit": "指数",
    "freq": "月"
+  },
+  "DGOERC1Q027SBEA": {
+   "name": "PCE 汽油及其他能源商品（名义，季度）",
+   "unit": "十亿美元（年化）",
+   "freq": "季"
   },
   "DGORDER": {
    "ok": true,
@@ -190,6 +200,11 @@
    "name": "PCE 能源商品与服务（名义）",
    "unit": "十亿美元（年化）",
    "freq": "月"
+  },
+  "DNRGRC1Q027SBEA": {
+   "name": "PCE 能源商品与服务（名义，季度）",
+   "unit": "十亿美元（年化）",
+   "freq": "季"
   },
   "DNRGRG3M086SBEA": {
    "ok": true,
@@ -802,5 +817,7 @@
    "freq": "周三"
   }
  },
- "effr_expect_error": null
+ "effr_expect_error": null,
+ "calendar_error": null,
+ "nowcast_error": null
 }

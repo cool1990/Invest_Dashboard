@@ -13,6 +13,7 @@
   --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
   --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
   --neg: #e34948; --pos: #2a78d6;
+  --st-alert: #d03b3b; --st-watch: #b97c00; --st-ok: #0a7f0a;
   --radius: 10px;
   --font: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
@@ -26,6 +27,7 @@
     --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
     --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
     --neg: #e66767; --pos: #3987e5;
+    --st-alert: #e66767; --st-watch: #fab219; --st-ok: #0ca30c;
   }
 }
 :root[data-theme="dark"] {
@@ -37,6 +39,7 @@
   --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
   --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
   --neg: #e66767; --pos: #3987e5;
+  --st-alert: #e66767; --st-watch: #fab219; --st-ok: #0ca30c;
 }
 
 * { box-sizing: border-box; }
@@ -168,3 +171,56 @@ table.data th:first-child, table.data td:first-child { text-align: left; }
 .hub-dims { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; font-size: 13px; }
 .empty { padding: 40px; text-align: center; color: var(--ink-2); }
 footer { max-width: 1320px; margin: 0 auto; padding: 0 16px 40px; color: var(--muted); font-size: 12px; }
+
+/* ---- 第二版：总判断、核心指标、数据发布 ---- */
+.verdict { padding: 18px 20px; margin-bottom: 12px; }
+.v-label { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+.v-head { font-size: 22px; margin-top: 2px; }
+.v-sub { color: var(--ink-2); margin-top: 4px; }
+.points { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; }
+.points li { display: grid; grid-template-columns: auto minmax(180px, 280px) 1fr; gap: 10px; align-items: baseline; }
+.points .pt-name b { font-weight: 600; margin-left: 4px; }
+.points .pt-name small { color: var(--muted); margin-left: 2px; }
+.points .pt-text { color: var(--ink-2); }
+@media (max-width: 760px) { .points li { grid-template-columns: auto 1fr; } .points .pt-text { grid-column: 1 / -1; } }
+
+.lv { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.lv b { font-size: 10px; }
+.lv-alert { color: var(--st-alert); }
+.lv-watch { color: var(--st-watch); }
+.lv-ok { color: var(--st-ok); }
+
+.score-sum { font-size: 12.5px; color: var(--ink-2); }
+h2.layer { font-size: 18px; margin: 30px 0 4px; }
+.layer-sub { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
+
+.signals { padding: 4px 0; }
+.sig { display: grid; grid-template-columns: 1.25fr .95fr 1.05fr .6fr 1fr 2.6fr; gap: 10px; padding: 9px 16px; border-top: 1px solid var(--grid); align-items: start; font-variant-numeric: tabular-nums; }
+.sig-head { border-top: 0; font-size: 12px; color: var(--muted); padding-top: 8px; padding-bottom: 6px; }
+.sig-dim { display: flex; gap: 8px; align-items: baseline; padding: 12px 16px 4px; border-top: 1px solid var(--border); font-weight: 600; }
+.sig-dim a { color: var(--ink); }
+.sig-name a { color: var(--ink); font-weight: 500; }
+.sig-name a:hover { color: var(--accent); }
+.sig-val b { font-size: 16px; }
+.sig-val small { color: var(--muted); margin-left: 3px; }
+.sig-interp { color: var(--ink-2); font-size: 13px; }
+.m-label { display: none; font-style: normal; color: var(--muted); font-size: 11.5px; margin-right: 4px; }
+@media (max-width: 900px) {
+  .sig-head { display: none; }
+  .sig { grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+  .sig-name { grid-column: 1 / -1; }
+  .sig-interp { grid-column: 1 / -1; }
+  .m-label { display: inline; }
+}
+
+.releases { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; }
+@media (max-width: 960px) { .releases { grid-template-columns: minmax(0, 1fr); } }
+.rel { padding: 14px 16px; }
+.rel h3 { font-size: 14.5px; }
+.rel table.data td { vertical-align: top; }
+
+.c-interp { font-size: 12.5px; color: var(--ink-2); margin-top: 6px; }
+.c-interp .ci-name { color: var(--ink); font-weight: 600; }
+section.dim > h2 .score-label { font-size: 12.5px; font-weight: 400; vertical-align: middle; }
+details.more { margin-top: 12px; }
+details.more > summary { cursor: pointer; color: var(--accent); padding: 6px 0; }
