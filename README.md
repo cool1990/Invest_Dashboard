@@ -6,6 +6,7 @@
 |---|---|---|
 | 美国宏观 | `macro.html` | 第一期 |
 | 半导体与 AI | `semis.html` | 第一期 |
+| 美股 | `us.html` | 第一期 |
 | 加密货币 | — | 规划中 |
 | 个股 | — | 规划中 |
 
@@ -91,6 +92,33 @@
 
 **后续**：第二期加台湾外销订单、日本 SEAJ 设备出货、WSTS 全球销售、SOX 相对 S&P 500，拿到 key 后启用 KOSIS；第三期由笔记接入合约价与交期，并照宏观的 `scenario.py` 加情景门槛。
 
+## 美股板块
+
+从盈利、估值、情绪三块看美股，不把方向相反的数平均掉。环境名只由盈利和估值决定（顺风 / 盈利支撑 / 涨但偏贵 / 估值便宜 / 中性 / 估值偏贵 / 下修但便宜 / 盈利转弱 / 双杀风险），情绪写在下面。阈值在 `pipeline/us/interpret.py`。
+
+**盈利、估值用的核心篮子**是盈利跟踪笔记里的 8 家：苹果、微软、英伟达、亚马逊、谷歌、Meta、博通、甲骨文。观察名单上的中概和加密相关公司只列在表里，不进中位数。样本不足、EPS 为负的不投票；某一天有数的不足 4 家，那天不出中位数。
+
+| 维度 | 怎么判断 |
+|---|---|
+| 盈利 | 核心篮子下财年 EPS 的 30 日修正中位数：高于 +2% 为上修，低于 −2% 为下修。强上修或强下修至少 3 家且多于另一边，理由里写成扩散，但不改中位数定的档 |
+| 估值 | 主数字是这 8 家的远期市盈率中位数。判断看盈利收益率（100 / 远期市盈率）减去 10 年实际利率：低于 2 个百分点为贵，2–4 大致合理，高于 4 为便宜。不和历史平均市盈率比 |
+| 情绪 | 四句并列：VIX（低于 15 平静，高于 25 紧张；CNN 恐贪、AAII 牛熊差若和 VIX 相反，写在同一句里）、标普站上 200 日均线的比例（低于 40% 为面窄）、FINRA 融资余额同比（高于 +20% 为扩张，低于 0 为去杠杆；比标普同比高过 10 个百分点算快于指数）、标普 500 前十大权重（达到 30% 为集中） |
+
+`data/us/manual.csv` 里如果写了 `spx_fwd_pe`（列与半导体手工表相同），估值改用这个标普远期市盈率，篮子中位数降为参考。
+
+**数据**：
+
+| 来源 | 内容 | 本地文件 |
+|---|---|---|
+| 旧站盈利跟踪 | 观察名单的收盘价、RSI、远期市盈率、30 日 EPS 修正 | `data/raw/us/earnings.csv` |
+| 旧站情绪笔记 | VIX、CNN 恐贪、AAII、标普和纳指参与度、RSI | `data/raw/us/sentiment.csv` |
+| 旧站日历 | 未来 14 天里观察名单上的美股财报 | `data/raw/us/calendar.json` |
+| FRED | 标普 500、VIX、税后企业利润、非金融企业股权市值；10 年实际利率和 GDP 直接读宏观已下载的文件 | `data/raw/fred/` |
+| FINRA | 保证金账户借方余额（客户融资），月频，从 1997 年起 | `data/raw/us/margin.csv` |
+| ETF 持仓 | 标普 500 前十大权重合计。先试 iShares IVV 的 CSV，那个地址目前常返回产品页，就改用 SPDR SPY 日持仓 | `data/raw/us/concentration.csv` |
+
+笔记类序列从 2026 年 9 月才有。前十大权重从第一次成功下载开始累积。企业利润同比和市值 / GDP 只作参考图，不改标签。
+
 ## 数据
 
 - 来源：圣路易斯联储 [FRED](https://fred.stlouisfed.org/) 的公开 CSV，不需要 API key。序列清单在 `pipeline/macro/indicators.py`。
@@ -121,11 +149,13 @@ pipeline/semis/kosis.py       韩国统计局出货与库存（需要 key）
 pipeline/semis/interpret.py   半导体规则：六个维度、象限、领先 vs 同步
 pipeline/semis/importance.py  半导体日历星级
 pipeline/semis/build.py       半导体看板数据
+pipeline/us/                  美股：盈利笔记、融资余额、前十大权重、三条规则
 scripts/update_macro.py       更新宏观数据（下载 + 生成）
 scripts/update_semis.py       更新半导体数据（下载 + 生成）
+scripts/update_us.py          更新美股数据（下载 + 生成）
 scripts/build_site.py         构建网页到 dist/
 tests/                        计算测试
-index.html  macro.html  semis.html  页面
+index.html  macro.html  semis.html  us.html  页面
 assets/js/board.js            两页共用的三层版式
 assets/                       样式、脚本、Chart.js（本地打包，不依赖 CDN）
 ```
@@ -135,7 +165,8 @@ assets/                       样式、脚本、Chart.js（本地打包，不依
 ## 自动更新
 
 - `.github/workflows/update-macro.yml`：每天 22:40 UTC（北京时间 06:40）跑测试、下载、生成；数据有变化就提交并发布网页。也可以在 Actions 页面手动运行。
-- `.github/workflows/update-semis.yml`：每天 02:10 UTC（北京时间 10:10，旧站早晨笔记之后）；每月 5–12 日 08:10 UTC 再跑一次接台湾月营收。可选 Secret `KOSIS_API_KEY`。两个更新工作流推送前都先 `git pull --rebase`，写的文件不重叠。
+- `.github/workflows/update-semis.yml`：每天 02:10 UTC（北京时间 10:10，旧站早晨笔记之后）；每月 5–12 日 08:10 UTC 再跑一次接台湾月营收。可选 Secret `KOSIS_API_KEY`。
+- `.github/workflows/update-us.yml`：每天 02:40 UTC（北京时间 10:40）。三个更新工作流推送前都先 `git pull --rebase`，写的文件不重叠（美股只写 `data/raw/us/`、`data/us/`，以及 `SP500`、`VIXCLS`、`CPATAX`、`NCBEILQ027S` 这四条宏观还没用的 FRED 序列）。
 - `.github/workflows/pages.yml`：改网页或合并到 `main` 时发布。
 
 首次使用需要在仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**。
@@ -149,6 +180,8 @@ python3 scripts/update_macro.py            # 下载并生成（需要能访问 F
 python3 scripts/update_macro.py --offline  # 只用已下载的 CSV 重新生成
 python3 scripts/update_semis.py            # 半导体：下载并生成（需要能访问旧站、FRED、证交所、SEC）
 python3 scripts/update_semis.py --offline
+python3 scripts/update_us.py               # 美股：下载并生成
+python3 scripts/update_us.py --offline
 python3 -m unittest discover -s tests
 python3 scripts/build_site.py && python3 -m http.server 8000 -d dist
 ```
