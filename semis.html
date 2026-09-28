@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>半导体与 AI · 投资看板</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body data-board="semis">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">投资看板</a>
+      <nav class="nav" id="nav" aria-label="板块"></nav>
+    </div>
+  </header>
+  <main id="app">
+    <div class="page-head">
+      <div>
+        <h1>半导体与 AI</h1>
+        <div class="sub">需求 · 库存 · 价格 · 产能 · 出货，AI 算力与传统芯片分开看 <span class="muted small" id="asof"></span></div>
+      </div>
+    </div>
+
+    <!-- 第一屏：左边结论与领先指标，右边即将发布 -->
+    <div class="top">
+      <div class="top-main">
+        <section class="card verdict" id="verdict"></section>
+        <section class="card statelog" id="statelog"></section>
+        <section class="card leading" id="leading" aria-labelledby="lead-title"></section>
+        <section class="card states" id="states" aria-label="六个维度"></section>
+      </div>
+      <aside class="card side" aria-labelledby="up-title">
+        <h2>今日发布</h2>
+        <div id="today"></div>
+        <h2 id="up-title" class="side-h2">即将发布</h2>
+        <p class="small muted">未来 14 天，北京时间；条目来自旧站日历里的半导体与云厂商财报。星级是重要程度，点「为什么」看理由。</p>
+        <div id="upcoming"></div>
+      </aside>
+    </div>
+
+    <!-- 第二层：六个维度各自的依据 -->
+    <h2 class="layer">依据</h2>
+    <p class="layer-sub">每块只列决定上面那句话的几个数：最新值、较上期、对照的锚点。标「参考」的是已公布但不进判断的数。点指标名跳到下面的图。笔记类数据（存储、GPU、OpenRouter、韩国出口）从 2026 年 9 月起才有，图会很短。</p>
+    <div class="section-nav">
+      <div class="chips" id="chips"></div>
+      <div class="seg" id="range" role="group" aria-label="时间范围"></div>
+    </div>
+    <div id="sections"></div>
+
+    <div class="card notes" id="notes"></div>
+    <div class="card health" id="health"></div>
+  </main>
+  <footer>数据来源：每日笔记（存储现货、GPU 租金、OpenRouter、SiliconData、韩国芯片出口、EPS 修正，经旧站整理）、圣路易斯联储 FRED、台湾证交所月营收、SEC XBRL 季报、韩国统计局 KOSIS（接入后）。仅供个人参考。</footer>
+  <script src="assets/vendor/chart.umd.min.js"></script>
+  <script src="assets/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="assets/js/common.js"></script>
+  <script src="assets/js/board.js"></script>
+  <script src="assets/js/semis.js"></script>
+</body>
+</html>

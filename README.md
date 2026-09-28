@@ -5,13 +5,13 @@
 | 板块 | 页面 | 状态 |
 |---|---|---|
 | 美国宏观 | `macro.html` | 第一期 |
-| 半导体与 AI | — | 规划中 |
+| 半导体与 AI | `semis.html` | 第一期 |
 | 加密货币 | — | 规划中 |
 | 个股 | — | 规划中 |
 
 网址：https://cool1990.github.io/Invest_Dashboard/
 
-旧站 [cool1990/macro-dashboard](https://github.com/cool1990/macro-dashboard) 照常运行，两边互不影响。本仓库只读旧站公开的一份文件（市场隐含 EFFR，见下）。
+旧站 [cool1990/macro-dashboard](https://github.com/cool1990/macro-dashboard) 照常运行，两边互不影响。本仓库只读旧站公开的文件：宏观读市场隐含 EFFR，半导体读笔记整理出的存储、GPU、OpenRouter、韩国出口、EPS 修正和日历（见下）。
 
 ## 宏观板块
 
@@ -55,6 +55,42 @@
 
 **ISM PMI** 不在 FRED，暂时用费城联储和纽约联储的制造业调查代替。
 
+## 半导体与 AI 板块
+
+目标：从**需求**和**供给**两边判断半导体景气度，重点看**领先指标**。AI 算力和传统芯片（手机、PC、成熟制程、模拟、通用存储）分两条线判断，因为现在两条线走势差得很远，平均会把分化抵消掉。做法和宏观页一样：按经济锚点判断、不用 z 分数，三层版式，阈值都在 `pipeline/semis/interpret.py`。
+
+**整体景气**：每条线按「需求档位 × 供给松紧」落到象限——景气上行（量价齐升）/ 温和扩张 / 量增价平 / 见顶风险 / 景气放缓 / 景气下行 / 去库下行。两条线不一样时标「分化」。下面一行写「领先 vs 同步」：领先指标的合计方向有没有被实际出货确认。
+
+**领先指标一览**：第一屏列出所有领先指标，按领先多久分组（几天到几周 / 1–3 个月 / 1–2 个季度），每项写对景气偏多、偏空还是中性。设备商营收只显示，不计入合计（扩产是 1–2 个季度后的供给）。
+
+| 维度 | 标签 | 进判断的数（锚点） |
+|---|---|---|
+| AI 需求（领先） | 加速 / 扩张 / 放缓 / 收缩 | 5 家云厂商资本开支合计同比（> 20% 扩张、< 0 收缩，比上季抬升 ≥ 5 个百分点为加速）；OpenRouter 最近 30 天用量较前 30 天（> 20% / < 0）；英伟达、台积电、博通下财年 EPS 30 天修正（±2%） |
+| 传统需求（领先） | 同上 | 美国计算机与电子产品新订单 3 个月同比（> 5% / < 0）；联发科 + 联电近 3 个月营收同比（> 10% / < 0）；德州仪器、微芯、亚德诺单季营收同比（> 5% / < 0）；高通、英特尔 EPS 修正 |
+| 库存周期（领先） | 主动去库 / 被动去库 / 主动补库 / 被动补库 | 出货同比 × 库存同比定阶段；出货 − 库存 > 0 为偏紧。首选韩国统计局半导体出货、库存指数，没有 key 时用美国计算机与电子产品（A34SVS、A34STI）；公司库存天数作参考 |
+| 价格（领先） | 涨价 / 企稳 / 跌价 | DRAM 现货 30 天 ±5%（历史不足 30 天时 7 天 ±2%）；现货比合约高 > 5% 时下季合约价大概率跟涨（合约价手工录入）。GPU 租金 90 天中位数（±10%）列在这里，但只进 AI 这条线的供给松紧 |
+| 产能（领先 1–2 季） | 扩张 / 平稳 / 收缩 | 应用材料、泛林、科磊营收同比（> 10% / < 0）；ASML 订单出货比（> 1.1 / < 0.9，手工录入）；美国半导体产能利用率、台积电资本开支指引作参考 |
+| 出货确认（同步） | 走强 / 持平 / 走弱 | 韩国芯片出口同比（取最新期间最完整的一档：全月 > 前 20 日 > 前 10 日）；台积电近 3 个月营收同比；美国半导体工业产出 3 个月同比。存储在涨价时注明出口增长里价格占了相当部分 |
+
+每个数按锚点投一票（+1 / 0 / −1），维度取平均：≥ 0.5 为强档，≤ −0.5 为弱档。供给松紧：AI = GPU 租金 + 存储价格 + 设备投资（扩张记为未来偏松）；传统 = 库存周期 + 存储价格 + 设备投资。
+
+**数据**：
+
+| 来源 | 内容 | 本地文件 |
+|---|---|---|
+| 旧站公开 CSV（每日笔记） | 存储现货、GPU 租金、OpenRouter、SiliconData、韩国芯片出口、EPS 修正、日历 | `data/raw/semis/oldsite/`，按主键累积 |
+| FRED | IPG3344S、CAPUTLG3344S、PCU33443344、A34SNO、A34SVS、A34STI | 与宏观共用 `data/raw/fred/` |
+| 台湾证交所 OpenAPI `t187ap05_L` | 台积电、广达、纬颖、欣兴、联电、联发科、日月光、南亚科、华邦电月营收；历史不足两年时从公开资讯观测站回补一次 | `data/raw/semis/twse_revenue.csv` |
+| SEC XBRL companyfacts | 云厂商资本开支，AI 芯片、美光、模拟、设备商的营收、销货成本、存货；累计数差分成单季，按期中所在的日历季度对齐 | `data/raw/semis/sec_quarterly.csv` |
+| 韩国统计局 KOSIS | 半导体出货、库存指数。需要仓库 Secret `KOSIS_API_KEY`（https://kosis.kr/openapi/ 免费申请）；表号在 `pipeline/semis/kosis.py`，拿到 key 后核对 | `data/raw/semis/kosis.csv` |
+| 手工 / 笔记 | `data/semis/manual.csv`，列 `date,key,value,unit,period,source,note`；key 见 `pipeline/semis/indicators.py` 的 `MANUAL`（DRAM/NAND 合约价、ASML 订单与销售、台积电资本开支指引与利用率、交期） | 同左 |
+
+笔记类数据从 2026 年 9 月才开始，旧站只有这之后的记录；图会很短，DRAM 在满 30 天之前用 7 天变化。
+
+**即将发布**：读旧站日历里分类为半导体、带半导体标记，或观察名单上云厂商与芯片公司的财报，未来 14 天。星级在 `pipeline/semis/importance.py`：看时效（领先的订单和资本开支指引最高，其次是最早公布的同步数据）和覆盖面。
+
+**后续**：第二期加台湾外销订单、日本 SEAJ 设备出货、WSTS 全球销售、SOX 相对 S&P 500，拿到 key 后启用 KOSIS；第三期由笔记接入合约价与交期，并照宏观的 `scenario.py` 加情景门槛。
+
 ## 数据
 
 - 来源：圣路易斯联储 [FRED](https://fred.stlouisfed.org/) 的公开 CSV，不需要 API key。序列清单在 `pipeline/macro/indicators.py`。
@@ -67,6 +103,9 @@
 
 ```
 pipeline/series.py            时间序列小工具（变化率、滚动、按日期对齐）
+pipeline/page.py              图表、依据指标的共用结构（两页前端读同一种格式）
+pipeline/statelog.py          判断变化日志（两页共用）
+pipeline/csvio.py             小 CSV 读写与按主键合并
 pipeline/fred.py              FRED 下载与读写
 pipeline/macro/indicators.py  宏观序列清单
 pipeline/macro/build.py       派生计算、图表、每维的依据数字
@@ -74,10 +113,20 @@ pipeline/macro/effr_expect.py 市场隐含 EFFR
 pipeline/macro/consensus.py   市场一致预期（经济日历）与克利夫兰联储 Nowcast
 pipeline/macro/interpret.py   规则解读、维度状态与整体环境
 pipeline/macro/scenario.py    新数据的情景门槛与发布前后对比
+pipeline/semis/indicators.py  半导体指标目录（序列、公司、手工录入的 key）
+pipeline/semis/oldsite.py     读旧站笔记数据与日历
+pipeline/semis/twse.py        台湾月营收
+pipeline/semis/sec.py         SEC 季报（累计数转单季）
+pipeline/semis/kosis.py       韩国统计局出货与库存（需要 key）
+pipeline/semis/interpret.py   半导体规则：六个维度、象限、领先 vs 同步
+pipeline/semis/importance.py  半导体日历星级
+pipeline/semis/build.py       半导体看板数据
 scripts/update_macro.py       更新宏观数据（下载 + 生成）
+scripts/update_semis.py       更新半导体数据（下载 + 生成）
 scripts/build_site.py         构建网页到 dist/
 tests/                        计算测试
-index.html  macro.html        页面
+index.html  macro.html  semis.html  页面
+assets/js/board.js            两页共用的三层版式
 assets/                       样式、脚本、Chart.js（本地打包，不依赖 CDN）
 ```
 
@@ -86,6 +135,7 @@ assets/                       样式、脚本、Chart.js（本地打包，不依
 ## 自动更新
 
 - `.github/workflows/update-macro.yml`：每天 22:40 UTC（北京时间 06:40）跑测试、下载、生成；数据有变化就提交并发布网页。也可以在 Actions 页面手动运行。
+- `.github/workflows/update-semis.yml`：每天 02:10 UTC（北京时间 10:10，旧站早晨笔记之后）；每月 5–12 日 08:10 UTC 再跑一次接台湾月营收。可选 Secret `KOSIS_API_KEY`。两个更新工作流推送前都先 `git pull --rebase`，写的文件不重叠。
 - `.github/workflows/pages.yml`：改网页或合并到 `main` 时发布。
 
 首次使用需要在仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**。
@@ -97,6 +147,8 @@ assets/                       样式、脚本、Chart.js（本地打包，不依
 ```bash
 python3 scripts/update_macro.py            # 下载并生成（需要能访问 FRED）
 python3 scripts/update_macro.py --offline  # 只用已下载的 CSV 重新生成
+python3 scripts/update_semis.py            # 半导体：下载并生成（需要能访问旧站、FRED、证交所、SEC）
+python3 scripts/update_semis.py --offline
 python3 -m unittest discover -s tests
 python3 scripts/build_site.py && python3 -m http.server 8000 -d dist
 ```

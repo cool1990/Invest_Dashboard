@@ -1,0 +1,203 @@
+{
+ "generated_at": "2026-09-28T08:11:24+08:00",
+ "events": [
+  {
+   "date": "2026-09-30",
+   "time_bj": "",
+   "category": "财报",
+   "title": "美光（MU）财报",
+   "url": "https://www.nasdaq.com/market-activity/earnings",
+   "note": "美东盘后。原名：Micron Technology, Inc.。日期不一样：Nasdaq earnings calendar写的是 2026-09-30，盈利跟踪笔记写的是 2026-10-01",
+   "previous": "$2.86",
+   "consensus": "$31.24",
+   "priority": "高"
+  },
+  {
+   "date": "2026-10-01",
+   "time_bj": "",
+   "category": "半导体",
+   "title": "韩国9月进出口（产业通商部，全月初值）",
+   "url": "https://www.index.go.kr/unity/potal/main/EachDtlPageDetail.do?idx_cd=1066",
+   "note": "e-나라지표写明产业通商部每月1日发布上月进出口动向；关税厅公表日程也写“전월 잠정치 수출입동향：매월1일”。页面未写钟点",
+   "previous": "",
+   "consensus": "",
+   "priority": "高"
+  },
+  {
+   "date": "2026-10-06",
+   "time_bj": "",
+   "category": "半导体",
+   "title": "联电9月营收",
+   "url": "https://www.umc.com/en/IR_Event/ir_events",
+   "note": "UMC IR：September 10/6/2026(Tue)，官方标注 Subject to change，未写钟点",
+   "previous": "",
+   "consensus": "",
+   "priority": "中"
+  },
+  {
+   "date": "2026-10-08",
+   "time_bj": "13:30",
+   "category": "半导体",
+   "title": "台积电9月营收",
+   "url": "https://investor.tsmc.com/english/financial-calendar",
+   "note": "TSMC IR 财务日历：TSMC Monthly Sales - September 2026，台北时间13:30（同北京时间）",
+   "previous": "",
+   "consensus": "",
+   "priority": "高"
+  },
+  {
+   "date": "2026-10-08",
+   "time_bj": "17:00",
+   "category": "半导体",
+   "title": "联发科9月营收",
+   "url": "https://www.mediatek.com/investor-relations",
+   "note": "MediaTek IR 首页 Upcoming Events：Monthly Sales - September 2026，GMT+8 17:00。IR Events 页同日期但标题写成 October，以首页为准",
+   "previous": "",
+   "consensus": "",
+   "priority": "中"
+  },
+  {
+   "date": "2026-10-13",
+   "time_bj": "",
+   "category": "半导体",
+   "title": "西部半导体展（旧金山，10月13-15日）",
+   "url": "https://www.semiconwest.org/",
+   "note": "官网：October 13–15, 2026；SEMI 新闻稿确认回到旧金山 Moscone Center。原名：SEMICON West 2026",
+   "previous": "",
+   "consensus": "",
+   "priority": "低"
+  },
+  {
+   "date": "2026-10-14",
+   "time_bj": "",
+   "category": "财报",
+   "title": "ASML 2026年第三季度业绩",
+   "url": "https://ourbrand.asml.com/asset/468514ab-2a25-42be-a284-1560ebebcb6a/Statutory-Interim-Report-2026.pdf",
+   "note": "ASML Statutory Interim Report 2026 财务日历：October 14, 2026 Announcement of third quarter results。未写钟点",
+   "previous": "",
+   "consensus": "",
+   "priority": "高"
+  },
+  {
+   "date": "2026-10-15",
+   "time_bj": "14:00",
+   "category": "财报",
+   "title": "台积电 3Q26 业绩会",
+   "url": "https://investor.tsmc.com/english/financial-calendar",
+   "note": "TSMC IR 财务日历：3Q'26 Earnings Conference and Conference Call，台北时间14:00-15:30",
+   "previous": "",
+   "consensus": "",
+   "priority": "高"
+  },
+  {
+   "date": "2026-10-21",
+   "time_bj": "",
+   "category": "半导体",
+   "title": "韩国10月1-20日出口（关税厅速报）",
+   "url": "https://tradedata.go.kr/cts/hmpg/openETS0100211Q.do?blbrTpcd=10&ntarSrno=1428&menuId=ETS_MNK_50200000",
+   "note": "关税厅公表日程：当月进出口速报每月11日、21日；10月21日为周三。页面未写钟点，公告注明日程变更会另行通知",
+   "previous": "",
+   "consensus": "",
+   "priority": "高"
+  },
+  {
+   "date": "2026-10-28",
+   "time_bj": "",
+   "category": "财报",
+   "title": "联电 3Q26 业绩与法说会",
+   "url": "https://www.umc.com/en/IR_Event/ir_events",
+   "note": "UMC IR：3Q 2026 Earnings Release & Investor Conference Call 10/28/2026，官方标注 Subject to change；会议细节提前15天公布",
+   "previous": "",
+   "consensus": "",
+   "priority": "高"
+  },
+  {
+   "date": "2026-11-01",
+   "time_bj": "",
+   "category": "半导体",
+   "title": "韩国10月进出口（产业通商部，全月初值）",
+   "url": "https://www.index.go.kr/unity/potal/main/EachDtlPageDetail.do?idx_cd=1066",
+   "note": "规则同上：每月1日发布；11月1日是周日。页面未写钟点",
+   "previous": "",
+   "consensus": "",
+   "priority": "高"
+  },
+  {
+   "date": "2026-11-05",
+   "time_bj": "",
+   "category": "半导体",
+   "title": "联电10月营收",
+   "url": "https://www.umc.com/en/IR_Event/ir_events",
+   "note": "UMC IR：October 11/5/2026(Thu)，官方标注 Subject to change",
+   "previous": "",
+   "consensus": "",
+   "priority": "中"
+  },
+  {
+   "date": "2026-11-10",
+   "time_bj": "",
+   "category": "半导体",
+   "title": "欧洲半导体展（慕尼黑，11月10-13日）",
+   "url": "https://www.semiconeuropa.org/",
+   "note": "官网：Nov 10–13, 2026，Messe München，与 electronica 同期。原名：SEMICON Europa 2026",
+   "previous": "",
+   "consensus": "",
+   "priority": "低"
+  },
+  {
+   "date": "2026-11-10",
+   "time_bj": "13:30",
+   "category": "半导体",
+   "title": "台积电10月营收",
+   "url": "https://investor.tsmc.com/english/financial-calendar",
+   "note": "TSMC IR 财务日历：TSMC Monthly Sales - October 2026，台北时间13:30",
+   "previous": "",
+   "consensus": "",
+   "priority": "高"
+  },
+  {
+   "date": "2026-11-10",
+   "time_bj": "17:00",
+   "category": "半导体",
+   "title": "联发科10月营收",
+   "url": "https://www.mediatek.com/investor-relations",
+   "note": "MediaTek IR 首页：Monthly Sales - October 2026，GMT+8 17:00",
+   "previous": "",
+   "consensus": "",
+   "priority": "中"
+  },
+  {
+   "date": "2026-11-11",
+   "time_bj": "",
+   "category": "半导体",
+   "title": "韩国11月1-10日出口（关税厅速报）",
+   "url": "https://tradedata.go.kr/cts/hmpg/openETS0100211Q.do?blbrTpcd=10&ntarSrno=1428&menuId=ETS_MNK_50200000",
+   "note": "关税厅公表日程：每月11日、21日；11月11日为周三。页面未写钟点",
+   "previous": "",
+   "consensus": "",
+   "priority": "高"
+  },
+  {
+   "date": "2026-11-12",
+   "time_bj": "",
+   "category": "财报",
+   "title": "应用材料 FY26 Q4 业绩（官方标注预计）",
+   "url": "https://investors.appliedmaterials.com/events",
+   "note": "AMAT IR Fiscal Calendar 2026：Q4 季末 October 25，Earnings Call 写作 Projected - November 12，尚未正式确认。美东日期，未写钟点",
+   "previous": "",
+   "consensus": "",
+   "priority": "高"
+  },
+  {
+   "date": "2026-11-30",
+   "time_bj": "",
+   "category": "半导体",
+   "title": "英伟达 GTC 华盛顿（11月30日-12月3日）",
+   "url": "https://www.nvidia.com/gtc/dc/",
+   "note": "官网：11月30日工作坊，12月1-3日会议；黄仁勋主题演讲12月1日美东14:00（北京时间12月2日03:00，在本次范围之外）。原名：NVIDIA GTC Washington, D.C.",
+   "previous": "",
+   "consensus": "",
+   "priority": "低"
+  }
+ ]
+}
