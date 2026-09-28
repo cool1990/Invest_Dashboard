@@ -156,23 +156,6 @@ class RuleTest(unittest.TestCase):
         self.assertEqual(I.price_state({"dram_chg": 3, "dram_window": 7})["label"], "涨价")
         self.assertEqual(I.price_state({"dram_chg": 3, "dram_window": 30})["label"], "企稳")
 
-    def test_quadrant_and_env(self):
-        up = {"label": "扩张", "level": 1}
-        flat = {"label": "放缓", "level": 0}
-        a = I.line_verdict("AI 算力", up, 1, "x")
-        t = I.line_verdict("传统芯片", flat, -1, "y")
-        self.assertEqual(a["name"], "景气上行")
-        self.assertEqual(t["name"], "去库下行")
-        env = I.environment(a, t, "领先指标走强，出货已确认")
-        self.assertEqual(env["name"], "分化")
-        self.assertIn("AI 算力景气上行", env["head"])
-        self.assertEqual(I.environment(a, dict(a), "")["name"], "景气上行")
-
-    def test_confirm(self):
-        self.assertEqual(I.confirm_text(0.6, {"label": "走强"}), "领先指标走强，出货已确认")
-        self.assertEqual(I.confirm_text(-0.6, {"label": "走强"}), "领先指标转弱，出货仍强，留意拐点")
-        self.assertEqual(I.confirm_text(None, {"label": "走强"}), "领先指标不足")
-
 
 def fixture_sources() -> B.Sources:
     """合成的一套数据：足够让每个维度都出标签。"""
@@ -221,45 +204,43 @@ class BuildTest(unittest.TestCase):
     def test_end_to_end(self):
         d = B.build_dashboard(fixture_sources(), date(2026, 9, 28), datetime(2026, 9, 28, 2, tzinfo=timezone.utc))
         keys = [x["key"] for x in d["dimensions"]]
-        self.assertEqual(keys, ["ai_demand", "trad_demand", "capacity", "inventory", "price", "shipments"])
-        labels = {x["key"]: x["label"] for x in d["dimensions"]}
+        self.assertEqual(keys, ["ai_demand", "trad_demand", "capacity", "inventory", "price", "segments"])
+        dims = [x for x in d["dimensions"] if x.get("side")]
+        self.assertEqual([x["side"] for x in dims], ["需求端", "需求端", "供给端", "供给端", "供给端"])
+        labels = {x["key"]: x["label"] for x in dims}
         self.assertNotIn("数据不足", labels.values())
         self.assertEqual(labels["ai_demand"], "扩张")  # 资本开支同比 +46%、用量 +53%、EPS 平均 +6%
         self.assertEqual(labels["price"], "涨价")
-        self.assertEqual(labels["shipments"], "走强")
         self.assertEqual(labels["inventory"], "主动补库")
-        # 领先指标一览按时长排序，设备商不计入合计
-        tiers = [x["tier"] for x in d["leading"]]
-        self.assertEqual(tiers, sorted(tiers, key=["几天到几周", "1–3 个月", "1–2 个季度"].index))
-        self.assertFalse(next(x for x in d["leading"] if x["name"] == "设备商营收同比")["score"])
-        # 韩国出口：取最新期间里最完整的一档
-        why = next(x for x in d["dimensions"] if x["key"] == "shipments")["why"]
-        self.assertIn("2026-09 前 20 日", why[0]["t"])
+        self.assertNotIn("leading", d)
+        # 整体位置：五个维度各投一票，每个维度都写了投给哪个阶段
+        pos = d["position"]
+        self.assertIn(pos["name"], set(I.CYCLE))
+        self.assertEqual(len(pos["votes"]), 5)
+        self.assertTrue(all(x["vote"] for x in dims))
+        self.assertTrue(all(w["now"] and w["signal"] for w in pos["watch"]))
+        # 分环节：五个环节，存储里有韩国出口（取最新期间最完整的一档）
+        segs = {x["key"]: x for x in d["segments"]}
+        self.assertEqual(list(segs), ["memory", "ai", "mature", "analog", "equip"])
+        self.assertTrue(any("2026-09 前 20 日" in e for e in segs["memory"]["extras"]))
+        self.assertNotIn("数据不足", [x["state"] for x in segs.values()])
         # 日历：只留 14 天内，按日期排序
         self.assertEqual([x["title"] for x in d["releases"]["upcoming"]],
                          ["美光（MU）财报", "韩国9月进出口（产业通商部，全月初值）"])
         self.assertEqual(d["releases"]["upcoming"][0]["forecast_text"], "EPS 预期 $31.24")
         # 没有 KOSIS 时用美国数据，图的说明写明
         self.assertIn("KOSIS_API_KEY", d["charts"]["inv_cycle"]["note"])
-        # 每个指标的图都真实存在
+        # 每个指标的图都真实存在，而且都有说明
         for dim in d["dimensions"]:
             for m in dim["metrics"]:
                 if m["chart"]:
                     self.assertIn(m["chart"], d["charts"])
-        self.assertIn(d["verdict"]["name"], set(I.CYCLE) | {"分化"})
-        # 景气位置：两条线都有投票依据，观察清单有当前值和信号
-        pos = d["position"]
-        self.assertTrue(pos["lines"]["ai"]["votes"])
-        self.assertTrue(all(w["now"] and w["signal"] for w in pos["watch"]))
-        # 每个半导体指标都有说明
-        for dim in d["dimensions"]:
-            for m in dim["metrics"]:
                 self.assertTrue(m.get("about"), m["id"])
 
     def test_empty_sources(self):
         d = B.build_dashboard(B.Sources(), date(2026, 9, 28))
         self.assertEqual(d["verdict"]["name"], "数据不足")
-        self.assertEqual(d["leading"], [])
+        self.assertEqual({x["state"] for x in d["segments"]}, {"数据不足"})
 
     def test_quarter_gap_no_accel(self):
         # 同比序列中间缺一季时，不拿隔季的数算加速
@@ -275,41 +256,51 @@ def _st(label, level=0, **kw):
 
 
 class PositionTest(unittest.TestCase):
-    def pos(self, demand, inv, price, cap, ship="走强", line="ai"):
-        return I.line_position(line, demand, inv, price, cap, _st(ship))
+    def pos(self, ai, trad, inv, price, cap):
+        return I.position(ai, trad, inv, price, cap)
 
     def test_up_stages(self):
-        early = self.pos(_st("加速", 1, yoy=15, accel=8), _st("被动去库", gap=5), _st("涨价", ppi=2), _st("收缩", equip=-5))
+        early = self.pos(_st("加速", 1, yoy=15, accel=8), _st("加速", 1, yoy=3, accel=2), _st("被动去库", gap=5),
+                         _st("涨价", ppi=2), _st("收缩", equip=-5))
         self.assertEqual(early["name"], "上行早期")
-        mid = self.pos(_st("扩张", 1, yoy=50, accel=2), _st("主动补库", gap=2), _st("涨价", ppi=8), _st("平稳", equip=5))
+        mid = self.pos(_st("扩张", 1, yoy=50, accel=2), _st("扩张", 1, yoy=20, accel=1), _st("主动补库", gap=2),
+                       _st("涨价", ppi=8), _st("平稳", equip=5))
         self.assertEqual(mid["name"], "上行中期")
-        late = self.pos(_st("扩张", 1, yoy=80, accel=-4), _st("被动补库", gap=-3), _st("企稳", ppi=20), _st("扩张", equip=25))
+        late = self.pos(_st("扩张", 1, yoy=80, accel=-4), _st("放缓", 0), _st("被动补库", gap=-3),
+                        _st("企稳", ppi=20), _st("扩张", equip=25))
         self.assertEqual(late["name"], "上行后期")
-        self.assertEqual(late["counts"]["后期"], 4)
+        self.assertEqual(late["counts"]["后期"], 5)
+        self.assertEqual([v["dim"] for v in late["votes"]], ["AI 算力", "传统终端", "库存", "价格", "产能"])
 
     def test_down_stages(self):
-        early = self.pos(_st("收缩", -1, yoy=-5, accel=-5), _st("被动补库", gap=-3), _st("企稳", ppi=20), _st("扩张", equip=20))
+        early = self.pos(_st("收缩", -1, yoy=-5, accel=-5), _st("收缩", -1, yoy=-2, accel=-3), _st("被动补库", gap=-3),
+                         _st("企稳", ppi=20), _st("扩张", equip=20))
         self.assertEqual(early["name"], "下行早期")
-        late = self.pos(_st("收缩", -1, yoy=-10, accel=5), _st("主动去库", gap=3), _st("企稳", ppi=2), _st("收缩", equip=-10))
+        late = self.pos(_st("收缩", -1, yoy=-10, accel=5), _st("收缩", -1, yoy=-8, accel=4), _st("主动去库", gap=3),
+                        _st("企稳", ppi=2), _st("收缩", equip=-10))
         self.assertEqual(late["name"], "下行后期")
 
-    def test_flat_and_tie(self):
-        flat = self.pos(_st("放缓", 0), _st("主动补库", gap=1), _st("企稳"), _st("平稳"), ship="持平")
-        self.assertEqual(flat["phase"], "震荡")
-        # 平票取中期：早期 2 票、后期 2 票
-        tie = self.pos(_st("加速", 1, yoy=10, accel=6), _st("被动去库", gap=4), _st("企稳", ppi=20), _st("扩张", equip=20))
+    def test_flat_split_and_tie(self):
+        # 两个需求方向相反：整体震荡，并写明需求内部分化
+        flat = self.pos(_st("扩张", 1), _st("收缩", -1), _st("主动补库", gap=1), _st("企稳"), _st("平稳"))
+        self.assertEqual(flat["name"], "震荡")
+        self.assertIn("需求内部分化", flat["split"])
+        # 平票取中期：早期 2 票、后期 2 票、中期 1 票
+        tie = self.pos(_st("加速", 1, yoy=10, accel=6), _st("扩张", 1, yoy=20, accel=-2), _st("被动去库", gap=4),
+                       _st("企稳", ppi=20), _st("平稳", equip=5))
         self.assertEqual(tie["name"], "上行中期")
-        # 需求扩张但出货走弱：不算上行
-        weak = self.pos(_st("扩张", 1, yoy=50), _st("被动补库", gap=-2), _st("企稳"), _st("扩张"), ship="走弱")
-        self.assertEqual(weak["phase"], "下行")
+        # 传统终端没数据：只用 AI 算力定方向，四票定阶段
+        one = self.pos(_st("扩张", 1, yoy=50, accel=2), _st("数据不足"), _st("主动补库", gap=2), _st("涨价", ppi=8), _st("平稳"))
+        self.assertEqual(one["name"], "上行中期")
+        self.assertEqual(len(one["votes"]), 4)
+        self.assertEqual(self.pos(_st("数据不足"), _st("数据不足"), _st("主动补库"), _st("涨价"), _st("平稳"))["name"], "数据不足")
 
-    def test_merge_and_watch(self):
-        a = {"phase": "上行", "stage": "后期", "name": "上行后期", "votes": []}
-        t = {"phase": "上行", "stage": "中期", "name": "上行中期", "votes": []}
-        p = I.position(a, t, _st("走强"))
-        self.assertEqual(p["name"], "分化")
-        self.assertIn("AI 算力上行后期", p["head"])
-        self.assertEqual(I.position(a, dict(a), _st("走强"))["name"], "上行后期")
+    def test_segments_and_watch(self):
+        self.assertEqual(I.segment_state(20, 10), "上行加速")
+        self.assertEqual(I.segment_state(20, 30), "上行放缓")
+        self.assertEqual(I.segment_state(-5, -10), "触底回升")
+        self.assertEqual(I.segment_state(-5, 2), "下行")
+        self.assertEqual(I.segment_state(None, 2), "数据不足")
         w = I.watch_list("上行", {"inv_gap": "+6.5"})
         self.assertEqual(len(w), 1)
         self.assertIn("转负", w[0]["signal"])

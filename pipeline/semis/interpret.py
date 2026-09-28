@@ -1,4 +1,6 @@
-"""规则：半导体六个维度的状态、两条线的景气象限、领先指标的方向。
+"""规则：半导体供需五个维度的状态、整体景气位置、分环节状态、观察清单。
+
+需求端：AI 算力、传统终端；供给端：产能、库存、价格。
 
 和宏观页一样按经济锚点判断，不和历史平均比。阈值都写在这里。
 每个维度函数拿到一组数（缺的为 None），返回：
@@ -36,10 +38,7 @@ PREMIUM = 5.0  # 现货高于合约 %
 EQUIP_UP, EQUIP_DOWN = 10.0, 0.0  # 设备商营收同比 %
 BTB_UP, BTB_DOWN = 1.1, 0.9  # ASML 订单出货比
 UTIL_TIGHT, UTIL_LOOSE = 80.0, 70.0  # 美国半导体产能利用率 %
-
-KOREA_UP, KOREA_DOWN = 10.0, 0.0  # 韩国芯片出口同比 %
-TSMC_UP, TSMC_DOWN = 15.0, 0.0  # 台积电 3 个月营收同比 %
-IP_UP, IP_DOWN = 5.0, 0.0  # 美国半导体工业产出同比 %
+IP_UP, IP_DOWN = 5.0, 0.0  # 美国半导体工业产出同比 %（产能下参考）
 
 
 def vote(x: float | None, up: float, down: float) -> int | None:
@@ -209,102 +208,6 @@ def capacity_state(v: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 同步确认
-
-
-def shipments_state(v: dict) -> dict:
-    """出货确认：韩国出口最早公布，台积电月营收看 AI 与先进制程，美国工业产出看本土。"""
-    korea, tsmc, ip = v.get("korea_yoy"), v.get("tsmc_yoy"), v.get("ip_yoy")
-    score = _avg([vote(korea, KOREA_UP, KOREA_DOWN), vote(tsmc, TSMC_UP, TSMC_DOWN), vote(ip, IP_UP, IP_DOWN)])
-    if score is None:
-        return _state("数据不足", 0, [], "出货数据不足", {})
-    label, level = ("走强", 1) if score >= 0.5 else ("走弱", -1) if score <= -0.5 else ("持平", 0)
-    why = _why(
-        ("韩国出口", korea is not None and f"{v.get('korea_period', '')} 芯片出口同比 {_pct(korea)}（{_band(KOREA_UP, KOREA_DOWN)}）"
-         + (f"；{v['korea_mix']}" if v.get("korea_mix") else "")),
-        ("台积电", tsmc is not None and f"近 3 个月营收同比 {_pct(tsmc)}（{_band(TSMC_UP, TSMC_DOWN)}）"),
-        ("美国产出", ip is not None and f"半导体工业产出 3 个月同比 {_pct(ip)}（{_band(IP_UP, IP_DOWN)}）"),
-    )
-    summary = {"走强": "实际出货在走强", "持平": "实际出货平稳", "走弱": "实际出货在走弱"}[label]
-    anchors = {"korea_yoy": f"> {KOREA_UP:g}% 偏强，< {KOREA_DOWN:g}% 偏弱",
-               "tsmc_yoy": f"> {TSMC_UP:g}% 偏强，< {TSMC_DOWN:g}% 偏弱",
-               "ip_yoy": f"> {IP_UP:g}% 偏强，< {IP_DOWN:g}% 偏弱"}
-    return _state(label, level, why, summary, anchors)
-
-
-# ---------------------------------------------------------------------------
-# 领先指标方向（给「领先指标一览」）
-
-
-def direction(x: float | None, up: float, down: float) -> str | None:
-    """偏多 / 偏空 / 中性（对景气而言）。"""
-    v = vote(x, up, down)
-    return None if v is None else {1: "偏多", 0: "中性", -1: "偏空"}[v]
-
-
-# ---------------------------------------------------------------------------
-# 象限与整体
-
-
-QUAD = {
-    (1, 1): "景气上行", (1, 0): "温和扩张", (1, -1): "量增价平",
-    (0, 1): "见顶风险", (0, 0): "景气放缓", (0, -1): "去库下行",
-    (-1, 1): "见顶风险", (-1, 0): "景气下行", (-1, -1): "去库下行",
-}
-QUAD_MEANING = {
-    "景气上行": "量价齐升",
-    "温和扩张": "量在增，价格平稳",
-    "量增价平": "量在增，但供给跟得上，价格涨不动",
-    "见顶风险": "需求不再扩张，价格还在高位",
-    "景气放缓": "需求放缓，供需大致平衡",
-    "景气下行": "需求在收缩",
-    "去库下行": "需求不强、供给偏松，价格承压",
-}
-
-
-def tightness(levels: list[int | None]) -> int | None:
-    a = _avg([x for x in levels])
-    if a is None:
-        return None
-    return 1 if a >= 1 / 3 else -1 if a <= -1 / 3 else 0
-
-
-def line_verdict(name: str, demand: dict, tight: int | None, tight_why: str) -> dict:
-    if demand["label"] == "数据不足" or tight is None:
-        return {"name": "数据不足", "t": f"{name}的数据还不够下判断", "quad": None}
-    q = QUAD[(demand["level"], tight)]
-    t_word = {1: "偏紧", 0: "平衡", -1: "偏松"}[tight]
-    return {"name": q, "quad": q, "t": f"{q}，{QUAD_MEANING[q]}。需求{demand['label']}；供给{t_word}（{tight_why}）"}
-
-
-def confirm_text(lead_score: float | None, ship: dict) -> str:
-    if lead_score is None:
-        return "领先指标不足"
-    lead = "走强" if lead_score >= 0.25 else "转弱" if lead_score <= -0.25 else "方向不明"
-    s = ship["label"]
-    if s == "数据不足":
-        return f"领先指标{lead}，出货数据不足"
-    if lead == "走强":
-        return "领先指标走强，出货已确认" if s == "走强" else "领先指标走强，出货尚未确认"
-    if lead == "转弱":
-        return "领先指标转弱，出货仍强，留意拐点" if s == "走强" else "领先指标转弱，出货也在走弱"
-    return f"领先指标方向不明，出货{s}"
-
-
-def environment(ai: dict, trad: dict, confirm: str) -> dict:
-    if ai["quad"] and ai["quad"] == trad["quad"]:
-        name = ai["quad"]
-        head = f"{name}：AI 算力与传统芯片方向一致"
-    elif ai["quad"] or trad["quad"]:
-        name = "分化"
-        head = f"分化：AI 算力{ai['name']}，传统芯片{trad['name']}"
-    else:
-        name, head = "数据不足", "数据还不够下判断"
-    lines = [{"k": "AI 算力", "t": ai["t"]}, {"k": "传统芯片", "t": trad["t"]}, {"k": "领先 vs 同步", "t": confirm}]
-    return {"name": name, "head": head, "lines": lines}
-
-
-# ---------------------------------------------------------------------------
 # 景气位置：方向（上行 / 下行 / 震荡）× 阶段（早期 / 中期 / 后期）
 #
 # 方向看这条线的需求档位，出货确认作校验。阶段按经典半导体周期，由需求、库存、价格、产能
@@ -317,14 +220,20 @@ STAGES = ("早期", "中期", "后期")
 CYCLE = ("上行早期", "上行中期", "上行后期", "下行早期", "下行中期", "下行后期")
 
 
-def _phase(demand: dict, inv: dict, ship: dict) -> str | None:
-    if demand["label"] == "数据不足":
-        return None
-    if demand["level"] > 0 and ship["label"] != "走弱":
-        return "上行"
-    if demand["level"] < 0 or (ship["label"] == "走弱" and inv["label"] in ("被动补库", "主动去库")):
-        return "下行"
-    return "震荡"
+def overall_phase(ai: dict, trad: dict) -> tuple[str | None, str]:
+    """方向：AI 算力与传统终端两个需求档位取平均。返回 (方向, 需求分化的说明)。"""
+    levels = [d["level"] for d in (ai, trad) if d["label"] != "数据不足"]
+    if not levels:
+        return None, ""
+    avg = sum(levels) / len(levels)
+    split = ""
+    if len(levels) == 2 and ai["level"] != trad["level"]:
+        split = f"需求内部分化：AI 算力{ai['label']}，传统终端{trad['label']}"
+    if avg >= 0.5:
+        return "上行", split
+    if avg <= -0.5:
+        return "下行", split
+    return "震荡", split
 
 
 def _demand_vote(phase: str, d: dict, line: str) -> tuple[str, str] | None:
@@ -387,26 +296,6 @@ def _supply_votes(phase: str, inv: dict, price: dict, cap: dict) -> list[tuple[s
     return out
 
 
-def line_position(line: str, demand: dict, inv: dict, price: dict, cap: dict, ship: dict) -> dict:
-    """一条线的位置：{phase, stage, name, votes[(维度, 阶段, 依据)]}。"""
-    phase = _phase(demand, inv, ship)
-    if phase is None:
-        return {"phase": None, "stage": None, "name": "数据不足", "votes": []}
-    if phase == "震荡":
-        lean = "偏强" if ship["label"] == "走强" else "偏弱" if ship["label"] == "走弱" else ""
-        return {"phase": "震荡", "stage": None, "name": "震荡" + (f"（{lean}）" if lean else ""), "votes": []}
-    votes = []
-    dv = _demand_vote(phase, demand, line)
-    if dv:
-        votes.append(("AI 需求" if line == "ai" else "传统需求", dv[0], dv[1]))
-    votes += _supply_votes(phase, inv, price, cap)
-    counts = {s: sum(1 for _, v, _ in votes if v == s) for s in STAGES}
-    top = max(counts.values())
-    winners = [s for s in STAGES if counts[s] == top]
-    stage = winners[0] if len(winners) == 1 else "中期"
-    return {"phase": phase, "stage": stage, "name": phase + stage, "votes": votes, "counts": counts}
-
-
 STAGE_MEANING = {
     "上行早期": "需求刚回升、库存还在消化、产能没扩，通常是周期里弹性最大的一段",
     "上行中期": "需求扩张、厂商补库存、价格在涨，量价齐升",
@@ -417,20 +306,56 @@ STAGE_MEANING = {
 }
 
 
-def position(ai: dict, trad: dict, ship: dict) -> dict:
-    """合并两条线：一致时写一个位置，不一致时标「分化」并分别写出。"""
-    if ai["name"] == trad["name"]:
-        name = ai["name"]
-        head = f"{name}：{STAGE_MEANING[name]}" if name in STAGE_MEANING else name
-    elif "数据不足" in (ai["name"], trad["name"]):
-        name = ai["name"] if trad["name"] == "数据不足" else trad["name"]
-        head = f"{name}（另一条线数据不足）"
-    else:
-        name = "分化"
-        head = f"分化：AI 算力{ai['name']}，传统芯片{trad['name']}"
-    confirm = {"走强": "出货走强，位置得到确认", "持平": "出货持平，确认力度一般", "走弱": "出货走弱，和需求判断有背离",
-               "数据不足": "出货数据不足"}[ship["label"]]
-    return {"name": name, "head": head, "lines": {"ai": ai, "trad": trad}, "confirm": confirm}
+DIM_NAMES = {"ai": "AI 算力", "trad": "传统终端"}
+
+
+def position(ai: dict, trad: dict, inv: dict, price: dict, cap: dict) -> dict:
+    """半导体整体的位置：方向看需求，阶段由 AI 算力、传统终端、产能、库存、价格五个维度各投一票。
+
+    返回 {phase, stage, name, head, meaning, split, votes[{dim, stage, why}], counts}。
+    """
+    phase, split = overall_phase(ai, trad)
+    base = {"phase": phase, "stage": None, "split": split, "votes": [], "counts": {}}
+    if phase is None:
+        return {**base, "name": "数据不足", "head": "需求数据不足，定不了位置", "meaning": ""}
+    if phase == "震荡":
+        return {**base, "name": "震荡", "head": "震荡：需求没有明确方向",
+                "meaning": "需求不扩张也不收缩，等待方向选择；看观察清单里哪边先出信号"}
+    votes = []
+    for line, d in (("ai", ai), ("trad", trad)):
+        if d["label"] == "数据不足":
+            continue
+        dv = _demand_vote(phase, d, line)
+        if dv:
+            votes.append({"dim": DIM_NAMES[line], "stage": dv[0], "why": dv[1]})
+    votes += [{"dim": dim, "stage": st, "why": why} for dim, st, why in _supply_votes(phase, inv, price, cap)]
+    counts = {s: sum(1 for v in votes if v["stage"] == s) for s in STAGES}
+    top = max(counts.values())
+    winners = [s for s in STAGES if counts[s] == top]
+    stage = winners[0] if len(winners) == 1 else "中期"
+    name = phase + stage
+    tally = "、".join(f"{k} {counts[k]} 票" for k in STAGES if counts[k])
+    return {**base, "stage": stage, "name": name, "votes": votes, "counts": counts,
+            "head": f"半导体整体处于{name}", "meaning": STAGE_MEANING[name], "tally": tally}
+
+
+# ---------------------------------------------------------------------------
+# 分环节：每个环节用一个主指标的同比及其变化定状态
+
+SEG_ACCEL = 0.0  # 同比比上期抬升多少算「在抬升」（个百分点）
+
+
+def segment_state(yoy: float | None, prev: float | None) -> str:
+    if yoy is None:
+        return "数据不足"
+    rising = prev is not None and yoy - prev > SEG_ACCEL
+    if yoy >= 0:
+        if prev is None:
+            return "上行"
+        return "上行加速" if rising else "上行放缓"
+    if prev is None:
+        return "下行"
+    return "触底回升" if rising else "下行"
 
 
 # 观察清单：最能改变位置判断的几个数。up = 上行时出现什么说明见顶或转下行；down = 下行时出现什么说明见底

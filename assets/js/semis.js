@@ -1,57 +1,64 @@
-// 半导体页：共用的三层版式在 board.js。这里放景气位置（周期刻度、两条线、投票依据、观察清单）、说明和数据状态。
+// 半导体页：共用的版式在 board.js。第一屏按「结论 → 为什么（供需五个维度）→ 分环节 → 后续关注」排，
+// 下面是指标详解（每个指标附说明）。
 "use strict";
 
-const LINE_NAME = { ai: "AI 算力", trad: "传统芯片" };
-
-// 周期刻度：上行早 → 中 → 后 → 下行早 → 中 → 后，标出两条线各在哪；震荡另标
+// 周期刻度：上行早 → 中 → 后 → 下行早 → 中 → 后，震荡另标；只标整体所在的一格
 function trackHTML(p) {
-  const at = (name) => Object.entries(p.lines).filter(([, l]) => l.name === name).map(([k]) => LINE_NAME[k]);
-  const cell = (name) => {
-    const who = at(name);
-    return `<li class="${who.length ? "on" : ""} ${name.startsWith("上行") ? "up" : "down"}">
-      <span>${esc(name.slice(2))}</span>${who.map((w) => `<b>${esc(w)}</b>`).join("")}</li>`;
-  };
-  const flat = Object.entries(p.lines).filter(([, l]) => (l.name || "").startsWith("震荡")).map(([k]) => LINE_NAME[k]);
-  return `<div class="track" role="img" aria-label="周期位置：${esc(p.head)}">
+  const cell = (name) => `<li class="${p.name === name ? "on" : ""} ${name.startsWith("上行") ? "up" : "down"}">
+      <span>${esc(name.slice(2))}</span>${p.name === name ? "<b>当前</b>" : ""}</li>`;
+  return `<div class="track" role="img" aria-label="周期位置：${esc(p.name)}">
     <div class="track-seg"><div class="track-h">上行</div><ol>${p.cycle.slice(0, 3).map(cell).join("")}</ol></div>
     <div class="track-seg"><div class="track-h">下行</div><ol>${p.cycle.slice(3).map(cell).join("")}</ol></div>
-    <div class="track-seg flat"><div class="track-h">&nbsp;</div><ol><li class="${flat.length ? "on" : ""}"><span>震荡</span>${flat.map((w) => `<b>${esc(w)}</b>`).join("")}</li></ol></div>
+    <div class="track-seg flat"><div class="track-h">&nbsp;</div><ol><li class="${p.name === "震荡" ? "on" : ""}"><span>震荡</span>${p.name === "震荡" ? "<b>当前</b>" : ""}</li></ol></div>
   </div>`;
 }
 
-// 投票依据：两条线的需求各一行，库存、价格、产能两条线共用
-function votesHTML(p) {
-  const ai = p.lines.ai.votes || [], trad = p.lines.trad.votes || [];
-  const rows = [];
-  if (ai[0] && ai[0][0].includes("需求")) rows.push(ai[0]);
-  if (trad[0] && trad[0][0].includes("需求")) rows.push(trad[0]);
-  const shared = (ai.length ? ai : trad).filter((v) => !v[0].includes("需求"));
-  rows.push(...shared);
-  if (!rows.length) return "";
-  return `<details class="votes"><summary>为什么是这个阶段：各维度投票</summary>
-    <ul>${rows.map(([dim, stage, why]) => `<li><span class="vote-dim">${esc(dim)}</span><span class="vote-st">${esc(stage)}</span><span>${esc(why)}</span></li>`).join("")}</ul>
-    <p class="small muted">每个维度按经典半导体周期给早期 / 中期 / 后期投一票，票最多的阶段胜出，平票取中期。库存、价格、产能两条线共用。</p>
-  </details>`;
-}
-
-function watchHTML(p) {
-  const w = p.watch || [];
-  if (!w.length) return "";
-  return `<div class="watch"><div class="v-label">接下来盯这些：出现什么说明位置在变</div>
-    <ul>${w.map((x) => `<li><span class="w-name">${esc(x.name)}</span><span class="w-now">现在 ${esc(x.now)}</span><span class="w-sig">${esc(x.signal)}</span></li>`).join("")}</ul></div>`;
+// 为什么：供需五个维度，一行一个：维度 | 标签 | 投哪个阶段 | 理由
+function whyHTML(p) {
+  const dims = DATA.dimensions.filter((d) => d.side);
+  const sides = [...new Set(dims.map((d) => d.side))];
+  const rows = sides.map((side) => `<div class="sd-side">${esc(side)}</div>` + dims.filter((d) => d.side === side).map((d) => `
+      <a class="sd-row" href="#${esc(d.key)}">
+        <span class="sd-name">${esc(d.name)}</span>
+        <span class="sd-label"><span class="tag-state">${esc(d.label)}</span></span>
+        <span class="sd-vote">${d.vote ? `投${esc(d.vote)}` : "—"}</span>
+        <span class="sd-why">${esc(d.vote_why || d.head || "")}</span>
+      </a>`).join("")).join("");
+  const foot = p.tally ? `五个维度：${esc(p.tally)} → <b>${esc(p.name)}</b>（票最多的阶段胜出，平票取中期）` : "";
+  return `<h3 class="sub-h">为什么：供需五个维度</h3>
+    <div class="sd">${rows}</div>${foot ? `<p class="sd-foot small">${foot}</p>` : ""}`;
 }
 
 function renderPosition() {
   const p = DATA.position;
-  const v = DATA.verdict || {};
-  if (!p) { renderVerdict(); return; }
   document.getElementById("verdict").innerHTML = `
     <div class="v-label">景气位置</div>
-    <h2 class="v-head">${esc(v.headline || "—")}</h2>
+    <h2 class="v-head">${esc(p.head)}</h2>
+    ${p.meaning ? `<p class="v-meaning">${esc(p.meaning)}</p>` : ""}
+    ${p.split ? `<p class="v-split small">${esc(p.split)}</p>` : ""}
     ${trackHTML(p)}
-    <ul class="v-lines">${(v.lines || []).map((x) => `<li><span class="v-k">${esc(x.k)}</span><span>${esc(x.t)}</span></li>`).join("")}</ul>
-    ${votesHTML(p)}
-    ${watchHTML(p)}`;
+    ${whyHTML(p)}`;
+}
+
+// 分环节：各环节现在怎样（不进整体判断）
+function renderSegments() {
+  const segs = DATA.segments || [];
+  const cls = (s) => (s.startsWith("上行") ? "up" : s === "下行" ? "down" : s === "触底回升" ? "turn" : "");
+  document.getElementById("segments").innerHTML = `<h3 class="sub-h">分环节：各环节现在怎样</h3>
+    <p class="small muted">每个环节看一个主指标的同比，以及它比上期是抬升还是回落。不进整体判断，用来看景气集中在哪、哪里先转弱。</p>
+    <div class="sg">${segs.map((x) => `<div class="sg-row">
+      <span class="sg-name">${esc(x.name)}<div class="small muted">${esc(x.what)}</div></span>
+      <span class="sg-state ${cls(x.state)}">${esc(x.state)}</span>
+      <span class="sg-nums"><b>${esc(x.main)}</b>${x.extras.map((e) => `<div class="small">${esc(e)}</div>`).join("")}</span>
+    </div>`).join("")}</div>`;
+}
+
+function renderWatch() {
+  const w = (DATA.position || {}).watch || [];
+  const el = document.getElementById("watch");
+  if (!w.length) { el.hidden = true; return; }
+  el.innerHTML = `<h3 class="sub-h">后续关注：出现什么说明位置在变</h3>
+    <ul class="wl">${w.map((x) => `<li><span class="w-name">${esc(x.name)}</span><span class="w-now">现在 ${esc(x.now)}</span><span class="w-sig">${esc(x.signal)}</span></li>`).join("")}</ul>`;
 }
 
 function renderNotes() {
@@ -87,9 +94,9 @@ async function main() {
   }
   document.getElementById("asof").textContent = `数据更新于 ${(DATA.status?.updated_at || DATA.asof).replace("T", " ").replace("Z", " UTC")}`;
   renderPosition();
+  renderSegments();
+  renderWatch();
   renderStateLog();
-  // 第一屏的理由只列五个维度；出货在景气位置里作同步验证，依据层仍有一块
-  renderStates(DATA.dimensions.filter((d) => d.key !== "shipments"));
   renderRange();
   renderSections();
   renderUpcoming();
