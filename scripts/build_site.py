@@ -14,8 +14,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / "dist"
-PAGES = ["index.html", "macro.html", "semis.html", "us.html"]
-DATA_FILES = ["data/macro/dashboard.json", "data/semis/dashboard.json", "data/us/dashboard.json"]
+PAGES = ["index.html", "macro.html", "semis.html", "us.html", "crypto.html"]
+DATA_FILES = [
+    "data/macro/dashboard.json",
+    "data/semis/dashboard.json",
+    "data/us/dashboard.json",
+    "data/crypto/dashboard.json",
+]
 ASSET_REF = re.compile(r'(?P<attr>(?:src|href)=")(?P<path>assets/[^"?#]+)"')
 
 

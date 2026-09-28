@@ -9,10 +9,11 @@ on:
       - "data/macro/**"
       - "data/semis/**"
       - "data/us/**"
+      - "data/crypto/**"
       - "scripts/build_site.py"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
-  # 「更新宏观数据」「更新半导体数据」「更新美股数据」提交新数据后调用这里；用 GITHUB_TOKEN 推送的提交不会触发 push 事件。
+  # 「更新宏观数据」「更新半导体数据」「更新美股数据」「更新加密货币数据」提交新数据后调用这里；用 GITHUB_TOKEN 推送的提交不会触发 push 事件。
   workflow_call:
     inputs:
       ref:
