@@ -360,38 +360,36 @@ def segment_state(yoy: float | None, prev: float | None) -> str:
 
 # 观察清单：最能改变位置判断的几个数。up = 上行时出现什么说明见顶或转下行；down = 下行时出现什么说明见底
 WATCH = [
+    # (id, 指标, 上行时的条件, 含义, 下行时的条件, 含义)
     ("capex_yoy", "云厂商资本开支同比",
-     f"连续两季回落，或跌破 {CAPEX_UP:g}%：AI 需求降档，是见顶的第一信号",
-     f"止跌回升并重回 {CAPEX_UP:g}% 以上：AI 需求重启"),
+     f"连续两季回落或 < {CAPEX_UP:g}%", "AI 需求见顶，领先芯片营收 1–2 季",
+     f"回升至 > {CAPEX_UP:g}%", "AI 需求重启"),
     ("inv_gap", "出货 − 库存",
-     "转负：库存开始堆积（被动补库），通常领先见顶 1–3 个月",
-     "由负转正：去库接近尾声，通常领先价格见底 1–3 个月"),
-    ("dram_chg", "DRAM 现货变化",
-     f"30 天跌超 {DRAM_30:g}%：存储价格转跌",
-     f"30 天涨超 {DRAM_30:g}%：价格见底回升"),
+     "转负", "库存开始堆积，领先见顶 1–3 个月",
+     "转正", "去库尾声，领先价格见底 1–3 个月"),
+    ("dram_chg", "DRAM 现货",
+     f"30 天跌超 {DRAM_30:g}%", "存储价格转跌",
+     f"30 天涨超 {DRAM_30:g}%", "存储价格见底"),
     ("equip_yoy", "设备商营收同比",
-     "继续抬升到 30% 以上：扩产加码，1–2 个季度后供给压力更大",
-     "由负转正：扩产重启，说明厂商看好后续需求"),
-    ("korea_yoy", "韩国芯片出口同比",
-     "连续两个月回落，或前 10/20 日明显放缓：出货确认转弱",
-     "转正并加速：出货回暖得到确认"),
+     "> 30% 且继续抬升", "扩产过猛，1–2 季后供给过剩",
+     "由负转正", "扩产重启，厂商看好需求"),
     ("analog_yoy", "模拟与 MCU 营收同比",
-     f"比上季回落，或跌破 {ANALOG_UP:g}%：传统芯片需求降温",
-     "由负转正：传统芯片周期见底"),
+     f"回落或 < {ANALOG_UP:g}%", "传统需求降温",
+     "由负转正", "传统周期见底"),
 ]
 
 
 def watch_list(phase: str | None, now: dict[str, str]) -> list[dict]:
-    """phase 为上行时写转弱信号，下行时写见底信号，震荡两边都写。now：{id: 当前值文字}。"""
+    """上行时写见顶条件，下行时写见底条件，震荡两边都写。now：{id: 当前值（上期值）}。"""
     out = []
-    for key, name, up, down in WATCH:
+    for key, name, up_c, up_m, dn_c, dn_m in WATCH:
         if key not in now:
             continue
         if phase == "上行":
-            sig = up
+            cond, mean = up_c, up_m
         elif phase == "下行":
-            sig = down
+            cond, mean = dn_c, dn_m
         else:
-            sig = f"向上：{down}；向下：{up}"
-        out.append({"id": key, "name": name, "now": now[key], "signal": sig})
+            cond, mean = f"{dn_c} / {up_c}", f"{dn_m} / {up_m}"
+        out.append({"id": key, "name": name, "now": now[key], "cond": cond, "meaning": mean})
     return out

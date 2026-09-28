@@ -238,6 +238,8 @@ class SemisBuilder:
 
         st = I.ai_demand_state(v)
         self.facts["capex_q"] = v.get("capex_q", "")
+        if tok_chg:
+            self.facts["tokens"] = (tok_chg[-1][1], tok_chg[-1][0].isoformat())
         charts = self.add(
             Chart("capex", "云厂商资本开支（单季）", "亿美元",
                   [Line(SEC[t][1], ts.scale(self.sec_q(t, "capex"), 1e-8), "bar") for t in cloud],
@@ -302,6 +304,10 @@ class SemisBuilder:
             v["eps_trad"], v["eps_trad_names"] = eps[-1][1], names
         st = I.trad_demand_state(v)
         self.facts["analog_q"] = v.get("analog_q", "")
+        if orders_yoy:
+            self.facts["orders"] = (orders_yoy[-1][1], orders_yoy[-1][0].isoformat()[:7])
+        if eps:
+            self.facts["eps_trad"] = (eps[-1][1], names)
         charts = self.add(
             Chart("orders", "美国计算机与电子产品新订单：3 个月同比", "%", [Line("同比", orders_yoy)], core=True,
                   start=date(2000, 1, 1), note="FRED A34SNO。M3 调查不单独公布半导体订单，用上一级行业代替。"),
@@ -355,7 +361,7 @@ class SemisBuilder:
             v["dio_yoy"], v["dio_names"] = sum(dio_yoy) / len(dio_yoy), "、".join(dio_names)
         st = I.inventory_state(v)
         if gap:
-            self.facts["inv_gap"] = (gap[-1][1], gap[-1][0].isoformat()[:7])
+            self.facts["inv_gap"] = (gap[-1][1], gap[-1][0].isoformat()[:7], gap[-2][1] if len(gap) > 1 else None)
         charts = self.add(
             Chart("inv_cycle", f"库存周期：{src}出货与库存同比", "%",
                   [Line("出货（3 个月均值）同比", ship_yoy), Line("库存同比", inv_yoy)], core=True,
@@ -423,6 +429,8 @@ class SemisBuilder:
         st = I.price_state(v)
         if "dram_chg" in v:
             self.facts["dram"] = (v["dram_chg"], window)
+        if "premium" in v:
+            self.facts["premium"] = v["premium"]
 
         # GPU 租金：算力的「价格」，进 AI 的供给松紧，不进本维标签
         gpu = {}
@@ -515,7 +523,10 @@ class SemisBuilder:
         ip_yoy = ts.pct_change(ts.rolling(self.fred("IPG3344S"), 3, "mean", "M"), 12, "M")
         st = I.capacity_state(v)
         if equip_yoy:
-            self.facts["equip"] = (equip_yoy[-1][1], v["equip_q"])
+            prev = equip_yoy[-2][1] if len(equip_yoy) > 1 and equip_yoy[-2][0] == ts._shift_month(equip_yoy[-1][0], -3) else None
+            self.facts["equip"] = (equip_yoy[-1][1], v["equip_q"], prev)
+        if btb:
+            self.facts["btb"] = btb[-1][1]
         charts = self.add(
             Chart("equip", "设备商单季营收：同比", "%",
                   [Line("三家合计", equip_yoy)] + [Line(SEC[t][1], ts.pct_change(self.sec_q(t, "revenue"), 4, "Q"), dash=True)
@@ -539,6 +550,7 @@ class SemisBuilder:
 
     # =====================================================================
     # 分环节：存储、AI 芯片与先进代工、成熟制程与手机、模拟与 MCU、设备
+    # 每个环节：领先指标（有才列）→ 上市公司（营收同比、环比、毛利率，各带上期）
     @staticmethod
     def _last_prev(s: Series, months: int) -> tuple[float | None, float | None]:
         """最新值和 months 个月前的值（没有就是 None）。"""
@@ -547,6 +559,38 @@ class SemisBuilder:
         d, v = s[-1]
         prev = dict(s).get(ts._shift_month(d, -months))
         return v, prev
+
+    def company_row(self, name: str, rev: Series, cogs: Series | None, months: int) -> dict | None:
+        """一家公司的最新一期：营收同比、环比、毛利率，以及上一期的同样三项。
+
+        months = 3 为季报（期间按日历季度），1 为月营收（没有毛利率）。缺期时对应项为 None。
+        """
+        if not rev:
+            return None
+        r, c = dict(rev), dict(cogs or [])
+        d = rev[-1][0]
+        p = ts._shift_month(d, -months)
+
+        def yoy(x):
+            base = r.get(ts._shift_month(x, -12))
+            return (r[x] / base - 1) * 100 if x in r and base else None
+
+        def qoq(x):
+            base = r.get(ts._shift_month(x, -months))
+            return (r[x] / base - 1) * 100 if x in r and base else None
+
+        def gm(x):
+            return (1 - c[x] / r[x]) * 100 if x in r and x in c and r[x] else None
+
+        return {"name": name, "period": qtext(d) if months == 3 else d.isoformat()[:7], "freq": "Q" if months == 3 else "M",
+                "yoy": yoy(d), "yoy_prev": yoy(p), "qoq": qoq(d), "qoq_prev": qoq(p),
+                "gm": gm(d) if cogs is not None else None, "gm_prev": gm(p) if cogs is not None else None}
+
+    def sec_company(self, t: str) -> dict | None:
+        return self.company_row(SEC[t][1], self.sec_q(t, "revenue"), self.sec_q(t, "cogs"), 3)
+
+    def tw_company(self, code: str) -> dict | None:
+        return self.company_row(TWSE[code][0], self.tw_rev(code), None, 1)
 
     def segments(self):
         rows = {}
@@ -562,49 +606,45 @@ class SemisBuilder:
                 if _fl(rows[p].get(col)) is not None:
                     korea, korea_period = _fl(rows[p][col]), f"{p} {txt}"
                     break
-        self.facts["korea"] = (korea, korea_period)
 
         mu_yoy = ts.pct_change(self.sec_q("MU", "revenue"), 4, "Q")
-        ai_rev = self.sec_sum(self.group("ai"), "revenue")
-        ai_rev_yoy = ts.pct_change(ai_rev, 4, "Q")
+        ai_rev_yoy = ts.pct_change(self.sec_sum(self.group("ai"), "revenue"), 4, "Q")
         tsmc = self.tw_yoy3(TW_AI_CONFIRM)
         tw_trad = self.tw_yoy3(TW_TRAD_DEMAND)
         analog_yoy = ts.pct_change(self.sec_sum(self.group("analog"), "revenue"), 4, "Q")
         equip_yoy = ts.pct_change(self.sec_sum(self.group("equip"), "revenue"), 4, "Q")
+        f = self.facts
 
-        def q(s: Series) -> str:
-            return qtext(s[-1][0]) if s else ""
+        def lead(name, value, note):
+            return {"name": name, "value": value, "note": note}
 
-        def m(s: Series) -> str:
-            return s[-1][0].isoformat()[:7] if s else ""
+        def seg(key, name, what, main_name, main, months, leading, companies):
+            yoy, prev = self._last_prev(main, months)
+            basis = "" if yoy is None else f"{main_name}同比 {yoy:+.1f}%" + (f"（上期 {prev:+.1f}%）" if prev is not None else "")
+            return {"key": key, "name": name, "what": what, "state": I.segment_state(yoy, prev), "basis": basis,
+                    "leading": [x for x in leading if x], "companies": [c for c in companies if c]}
 
-        def pct(x: float | None) -> str:
-            return "—" if x is None else f"{x:+.1f}%"
-
-        dram = self.facts.get("dram")
-        segs = []
-
-        def seg(key, name, what, main_name, series, months, when, extras):
-            yoy, prev = self._last_prev(series, months)
-            state = I.segment_state(yoy, prev)
-            chg = "" if yoy is None or prev is None else f"，比{'上季' if when.endswith(('Q1', 'Q2', 'Q3', 'Q4')) else f' {months} 个月前'} {yoy - prev:+.1f} 个百分点"
-            segs.append({"key": key, "name": name, "what": what, "state": state,
-                         "main": f"{main_name} {pct(yoy)}（{when}{chg}）" if yoy is not None else f"{main_name}：数据不足",
-                         "extras": [e for e in extras if e]})
-
-        seg("memory", "存储", "DRAM、NAND、HBM；周期弹性最大，最先反映供需", "美光营收同比", mu_yoy, 3, q(mu_yoy),
-            [dram and f"DRAM 现货 {dram[1]} 天 {dram[0]:+.1f}%",
-             korea is not None and f"韩国芯片出口同比 {korea:+.1f}%（{korea_period}，金额含涨价因素）"])
-        seg("ai", "AI 芯片与先进代工", "GPU、定制 AI 芯片和先进制程代工；AI 需求最直接的受益环节", "台积电近 3 个月营收同比",
-            tsmc, 3, m(tsmc),
-            [ai_rev_yoy and f"英伟达、AMD、博通营收同比 {ai_rev_yoy[-1][1]:+.1f}%（{q(ai_rev_yoy)}）",
-             self.gpu_90d is not None and f"GPU 租金 90 天 {self.gpu_90d:+.1f}%"])
-        seg("mature", "成熟制程与手机", "成熟制程代工和手机芯片；跟着手机、PC 等消费电子走", "联电 + 联发科近 3 个月营收同比",
-            tw_trad, 3, m(tw_trad), [])
-        seg("analog", "模拟与 MCU", "电源、信号链、微控制器；工业和汽车需求为主，周期规律最典型", "德州仪器、微芯、亚德诺营收同比",
-            analog_yoy, 3, q(analog_yoy), [])
-        seg("equip", "半导体设备", "光刻、刻蚀、薄膜、检测设备；反映晶圆厂的扩产力度", "应用材料、泛林、科磊营收同比",
-            equip_yoy, 3, q(equip_yoy), [])
+        dram, eps_t, orders = f.get("dram"), f.get("eps_trad"), f.get("orders")
+        segs = [
+            seg("memory", "存储", "DRAM、NAND、HBM；周期弹性最大，最先反映供需", "美光营收", mu_yoy, 3,
+                [dram and lead("DRAM 现货", f"{dram[1]} 天 {dram[0]:+.1f}%", "现货领先合约价 1–2 季"),
+                 korea is not None and lead("韩国芯片出口同比", f"{korea:+.1f}%（{korea_period}）", "最早的出货数据，金额含涨价"),
+                 f.get("premium") is not None and lead("现货比合约", f"{f['premium']:+.1f}%", "> 5% 时下季合约价大概率跟涨")],
+                [self.sec_company("MU")]),
+            seg("ai", "AI 芯片与先进代工", "GPU、定制 AI 芯片和先进制程代工；AI 需求最直接的受益环节", "台积电近 3 个月营收", tsmc, 3,
+                [self.gpu_90d is not None and lead("GPU 租金", f"90 天 {self.gpu_90d:+.1f}%", "算力紧不紧的直接价格"),
+                 f.get("tokens") and lead("OpenRouter 用量", f"30 天 {f['tokens'][0]:+.1f}%", "推理需求的高频读数")],
+                [self.sec_company("NVDA"), self.sec_company("AMD"), self.sec_company("AVGO"), self.tw_company("2330")]),
+            seg("mature", "成熟制程与手机", "成熟制程代工和手机芯片；跟着手机、PC 等消费电子走", "联电 + 联发科近 3 个月营收", tw_trad, 3,
+                [eps_t and lead("高通、英特尔 EPS 修正", f"30 天 {eps_t[0]:+.2f}%", "手机、PC 需求的预期")],
+                [self.tw_company("2303"), self.tw_company("2454")]),
+            seg("analog", "模拟与 MCU", "电源、信号链、微控制器；工业和汽车为主，周期规律最典型", "三家合计营收", analog_yoy, 3,
+                [orders and lead("美国电子产品新订单", f"3 个月同比 {orders[0]:+.1f}%（{orders[1]}）", "订单领先出货 1–3 个月")],
+                [self.sec_company(t) for t in self.group("analog")]),
+            seg("equip", "半导体设备", "光刻、刻蚀、薄膜、检测设备；反映晶圆厂的扩产力度", "三家合计营收", equip_yoy, 3,
+                [f.get("btb") is not None and lead("ASML 订单出货比", f"{f['btb']:.2f}", "> 1.1 说明订单在累积")],
+                [self.sec_company(t) for t in self.group("equip")]),
+        ]
 
         charts = self.add(
             Chart("mu_rev", "美光：单季营收同比", "%", [Line("营收同比", mu_yoy)], core=True, start=date(2016, 1, 1),
@@ -617,6 +657,9 @@ class SemisBuilder:
                   [Line("三家合计", ai_rev_yoy)] + [Line(SEC[t][1], ts.pct_change(self.sec_q(t, "revenue"), 4, "Q"), dash=True)
                                                  for t in self.group("ai")],
                   core=True, start=date(2018, 1, 1), note="英伟达、AMD、博通。"),
+            Chart("gm", "毛利率", "%",
+                  [Line(SEC[t][1], self.gm_series(t)) for t in ("NVDA", "MU", "TXN", "AMAT")],
+                  start=date(2016, 1, 1), note="（营收 − 销货成本）÷ 营收。毛利率见顶回落常早于营收见顶。"),
             Chart("korea_usd", "韩国芯片出口：全月金额", "百万美元", [Line("金额", k_month, "bar")]),
             Chart("tw_ai", "AI 服务器与载板：月营收同比", "%", [Line(TWSE[c][0], self.tw_yoy1(c)) for c in ("2382", "6669", "3037")],
                   start=date(2019, 1, 1), note="广达、纬颖（服务器组装）、欣兴（ABF 载板）；参考。"),
@@ -629,9 +672,14 @@ class SemisBuilder:
             Metric("ai_rev_yoy", "英伟达、AMD、博通营收同比", ai_rev_yoy, "%", "{:+.1f}", "Q", "ai_rev"),
         ]
         groups = [("存储", [c for c in charts if c in ("mu_rev", "korea", "korea_usd")]),
-                  ("AI 芯片与先进代工", [c for c in charts if c in ("tsmc", "ai_rev", "tw_ai")])]
+                  ("AI 芯片与先进代工", [c for c in charts if c in ("tsmc", "ai_rev", "tw_ai")]),
+                  ("毛利率", [c for c in charts if c == "gm"])]
         st = {"label": "", "why": [], "head": "；".join(f"{x['name']}{x['state']}" for x in segs), "anchors": {}}
         return groups, metrics, st, segs
+
+    def gm_series(self, t: str) -> Series:
+        r, c = dict(self.sec_q(t, "revenue")), dict(self.sec_q(t, "cogs"))
+        return sorted((d, (1 - c[d] / r[d]) * 100) for d in r if d in c and r[d])
 
     # =====================================================================
     # 日历
@@ -705,27 +753,27 @@ class SemisBuilder:
         }
 
     def watch_now(self, st: dict) -> dict[str, str]:
-        """观察清单每项的当前读数文字。"""
+        """观察清单每项的当前读数，写成「当前值（上期值）」。"""
+        def now_prev(v, prev, unit="%", label="上季"):
+            return f"{v:+.1f}{unit}" + (f"（{label} {prev:+.1f}{unit}）" if prev is not None else "")
+
         now = {}
         ai, trad = st["ai_demand"], st["trad_demand"]
         if ai.get("yoy") is not None:
-            acc = f"，比上季 {ai['accel']:+.1f} 个百分点" if ai.get("accel") is not None else ""
-            now["capex_yoy"] = f"{ai['yoy']:+.1f}%（{self.facts.get('capex_q', '')}{acc}）"
+            prev = ai["yoy"] - ai["accel"] if ai.get("accel") is not None else None
+            now["capex_yoy"] = now_prev(ai["yoy"], prev)
         if "inv_gap" in self.facts:
-            g, d = self.facts["inv_gap"]
-            now["inv_gap"] = f"{g:+.1f} 个百分点（{d}）"
+            g, _, prev = self.facts["inv_gap"]
+            now["inv_gap"] = now_prev(g, prev, " 个百分点", "上月")
         if "dram" in self.facts:
             c, w = self.facts["dram"]
             now["dram_chg"] = f"{w} 天 {c:+.1f}%"
         if "equip" in self.facts:
-            c, q = self.facts["equip"]
-            now["equip_yoy"] = f"{c:+.1f}%（{q}）"
-        k = self.facts.get("korea")
-        if k and k[0] is not None:
-            now["korea_yoy"] = f"{k[0]:+.1f}%（{k[1]}）"
+            c, _, prev = self.facts["equip"]
+            now["equip_yoy"] = now_prev(c, prev)
         if trad.get("yoy") is not None:
-            acc = f"，比上季 {trad['accel']:+.1f} 个百分点" if trad.get("accel") is not None else ""
-            now["analog_yoy"] = f"{trad['yoy']:+.1f}%（{self.facts.get('analog_q', '')}{acc}）"
+            prev = trad["yoy"] - trad["accel"] if trad.get("accel") is not None else None
+            now["analog_yoy"] = now_prev(trad["yoy"], prev)
         return now
 
 

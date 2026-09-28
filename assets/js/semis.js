@@ -40,25 +40,44 @@ function renderPosition() {
     ${whyHTML(p)}`;
 }
 
-// 分环节：各环节现在怎样（不进整体判断）
+// 分环节：每个环节先列领先指标（有才列），再列上市公司的营收同比、环比、毛利率（各带上期）
+const pct = (v, d = 1) => (v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(d)}%`);
+const gmTxt = (v) => (v === null || v === undefined ? "—" : `${v.toFixed(1)}%`);
+function cellHTML(v, prev, fmt) {
+  return `<td><b>${fmt(v)}</b>${prev === null || prev === undefined ? "" : `<small>上期 ${fmt(prev)}</small>`}</td>`;
+}
+
 function renderSegments() {
   const segs = DATA.segments || [];
   const cls = (s) => (s.startsWith("上行") ? "up" : s === "下行" ? "down" : s === "触底回升" ? "turn" : "");
+  const block = (x) => {
+    const lead = x.leading.length ? `<ul class="sg-lead">${x.leading.map((l) => `<li><span class="tag tag-lead">领先</span>
+        <b>${esc(l.name)}</b> ${esc(l.value)}<span class="muted"> · ${esc(l.note)}</span></li>`).join("")}</ul>` : "";
+    const rows = x.companies.map((c) => `<tr><td>${esc(c.name)}<small>${esc(c.period)}</small></td>
+        ${cellHTML(c.yoy, c.yoy_prev, pct)}${cellHTML(c.qoq, c.qoq_prev, pct)}${cellHTML(c.gm, c.gm_prev, gmTxt)}</tr>`).join("");
+    const table = rows ? `<div class="table-wrap"><table class="data co"><tr><th>公司 · 期间</th><th>营收同比</th><th>环比</th><th>毛利率</th></tr>${rows}</table></div>` : "";
+    return `<div class="sg-block">
+      <div class="sg-head"><span class="sg-name">${esc(x.name)}</span><span class="sg-state ${cls(x.state)}">${esc(x.state)}</span>
+        <span class="small muted">${esc(x.basis || "")}</span></div>
+      <div class="small muted sg-what">${esc(x.what)}</div>
+      ${lead}${table}
+    </div>`;
+  };
   document.getElementById("segments").innerHTML = `<h3 class="sub-h">分环节：各环节现在怎样</h3>
-    <p class="small muted">每个环节看一个主指标的同比，以及它比上期是抬升还是回落。不进整体判断，用来看景气集中在哪、哪里先转弱。</p>
-    <div class="sg">${segs.map((x) => `<div class="sg-row">
-      <span class="sg-name">${esc(x.name)}<div class="small muted">${esc(x.what)}</div></span>
-      <span class="sg-state ${cls(x.state)}">${esc(x.state)}</span>
-      <span class="sg-nums"><b>${esc(x.main)}</b>${x.extras.map((e) => `<div class="small">${esc(e)}</div>`).join("")}</span>
-    </div>`).join("")}</div>`;
+    <p class="small muted">每个环节先看领先指标，再看上市公司最新一期的营收同比、环比和毛利率（小字是上一期）。状态按主指标同比及其变化定，不进整体判断。</p>
+    ${segs.map(block).join("")}
+    <p class="small muted sg-foot">季报期间按财报期中所在的日历季度写；台湾公司是月营收，没有毛利率；「—」表示暂无数据。</p>`;
 }
 
 function renderWatch() {
   const w = (DATA.position || {}).watch || [];
   const el = document.getElementById("watch");
   if (!w.length) { el.hidden = true; return; }
-  el.innerHTML = `<h3 class="sub-h">后续关注：出现什么说明位置在变</h3>
-    <ul class="wl">${w.map((x) => `<li><span class="w-name">${esc(x.name)}</span><span class="w-now">现在 ${esc(x.now)}</span><span class="w-sig">${esc(x.signal)}</span></li>`).join("")}</ul>`;
+  const phase = (DATA.position || {}).phase;
+  const sub = phase === "上行" ? "出现下面的情况，说明上行可能见顶" : phase === "下行" ? "出现下面的情况，说明下行可能见底" : "哪边先出现，方向就往哪边走";
+  el.innerHTML = `<h3 class="sub-h">后续关注</h3><p class="small muted">${esc(sub)}</p>
+    <ul class="wl">${w.map((x) => `<li><div><span class="w-name">${esc(x.name)}</span><span class="w-now">现在 ${esc(x.now)}</span></div>
+      <div class="w-sig"><b>${esc(x.cond)}</b> → ${esc(x.meaning)}</div></li>`).join("")}</ul>`;
 }
 
 function renderNotes() {
