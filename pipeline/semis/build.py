@@ -1,7 +1,8 @@
-"""把各来源整理成 data/semis/dashboard.json。结构和宏观页相同，另加 leading（领先指标一览）。
+"""把各来源整理成 data/semis/dashboard.json。结构和宏观页相同，另加 position（景气位置）。
 
-- 结论：verdict（两条线各自的景气象限 + 领先 vs 同步）、leading、dimensions 的 label / why。
-- 依据：dimensions 的 metrics 和 sections + charts。
+- 结论：position（上行 / 下行 / 震荡 × 早期 / 中期 / 后期，投票依据，观察清单）、
+  dimensions 的 label / why（AI 需求、传统需求、产能、库存、价格五个维度，出货作同步验证）。
+- 依据：dimensions 的 metrics（每个指标附 about：判断什么、怎么判断、为什么有效）和 sections + charts。
 - 时间：releases.upcoming（旧站日历里的半导体条目与云厂商财报，附星级）。
 
 缺数据的来源会被跳过；某张图一条序列都没有，就不输出这张图。
@@ -9,6 +10,7 @@
 
 from __future__ import annotations
 
+import re
 import statistics
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -22,6 +24,49 @@ from .indicators import (DRAM, EPS_AI, EPS_TRAD, GPUS, MANUAL, NAND, SEC, SSD, T
                          TWSE)
 
 UPCOMING_DAYS = 14
+# 每个指标判断什么、怎么判断、为什么有效。依据层每个数下面显示这段话。
+ABOUT = {
+    "capex_yoy": "判断 AI 需求源头的投入力度。5 家云厂商单季资本开支合计的同比，> 20% 为扩张，比上季抬升 ≥ 5 个百分点为加速。"
+                 "云厂商买 GPU、建数据中心的钱最终变成英伟达、台积电、存储厂的收入，所以它领先这些公司营收 1–2 个季度。",
+    "tokens_30d": "判断 AI 推理的实际用量。OpenRouter 最近 30 天 token 总量比前 30 天的变化，> 20% 偏强、< 0 偏弱。"
+                  "用量是算力需求的最终来源，而且每天更新；但只覆盖一个平台，作高频验证。",
+    "eps_ai": "判断分析师对 AI 芯片前景的看法在变好还是变坏。英伟达、台积电、博通下财年 EPS 30 天内被上调或下调的幅度，超过 ±2% 算明显。"
+              "分析师会根据供应链订单和渠道调研改预期，修正方向常常领先财报。",
+    "orders_yoy": "判断手机、PC、工业电子等终端的下单力度。美国计算机与电子产品新订单 3 个月均值的同比，> 5% 偏强、< 0 偏弱。"
+                  "订单先于出货和芯片采购，一般领先 1–3 个月；美国统计不单列半导体订单，用上一级行业代替。",
+    "tw_trad_yoy": "判断手机芯片和成熟制程的出货。联发科（手机芯片）+ 联电（成熟制程代工）近 3 个月营收合计同比，> 10% 偏强、< 0 偏弱。"
+                   "台湾月营收次月 10 日前就公布，是传统芯片最及时的硬数据。",
+    "analog_yoy": "判断工业、汽车、消费电子这些最周期性的需求。德州仪器、微芯、亚德诺单季营收合计同比，> 5% 偏强，比上季抬升为加速。"
+                  "模拟芯片客户分散、周期规律明显，历来是半导体周期的风向标。",
+    "eps_trad": "判断市场对手机和 PC 需求的预期。高通、英特尔下财年 EPS 30 天修正，超过 ±2% 算明显。反映的是预期而非实际出货，作辅助。",
+    "equip_yoy": "判断行业在不在扩产。应用材料、泛林、科磊单季营收合计同比，> 10% 为扩张、< 0 为收缩。"
+                 "设备装进晶圆厂要 1–2 个季度才变成产能，所以它领先供给；扩产太猛往往是下一轮供过于求的起点。",
+    "asml_btb": "判断先进产能的长期扩张意愿。ASML 当季新订单 ÷ 销售额，> 1.1 说明订单在累积、< 0.9 在收缩。"
+                "光刻机交期一年以上，订单是最早的产能信号（手工录入）。",
+    "util": "判断现有产能紧不紧。美国半导体及电子元件产能利用率，≥ 80% 偏紧、< 70% 偏松。"
+            "利用率高，厂商才有涨价和扩产的底气；口径只覆盖美国本土，作参考。",
+    "tsmc_capex": "判断全球最大代工厂的扩产力度。台积电全年资本开支指引的中值，看比上次指引是上调还是下调（手工录入）。",
+    "ship_yoy": "判断下游实际拿货的速度。出货 3 个月均值的同比，≥ 0 说明需求向上；和库存同比一起看，就能定位库存周期。",
+    "inv_yoy": "判断库存在增加还是减少。库存同比 ≥ 0 说明在增加：需求好时是主动补库，需求差时是被动堆积。",
+    "inv_gap": "判断库存压力在减轻还是加重。出货同比减库存同比，> 0 说明货卖得比囤得快。"
+               "库存是周期的放大器，这个差值的拐点通常领先价格和营收拐点 1–3 个月。",
+    "dio_yoy": "从公司财报确认库存状况。美光、德州仪器、微芯的库存天数（存货 ÷ 单季销货成本 × 91）比一年前的变化，上升说明货卖得慢。"
+               "财报一季才出一次，偏滞后，用来确认。",
+    "dram_chg": "判断存储供需最快的信号。DDR4/DDR5 颗粒现货价 30 天变化，超过 ±5% 算涨跌（历史不足 30 天时用 7 天、±2%）。"
+                "现货由渠道每天交易，比厂商季度合约价早 1–2 个季度反映供需变化。",
+    "premium": "判断下个季度合约价会不会涨。现货比合约高多少，> 5% 时合约价大概率跟涨。合约价是存储厂的主要收入口径（需手工录入）。",
+    "gpu_90d": "判断 AI 算力紧不紧。H100、H200、B200 云端租金 90 天变化的中位数，> +10% 偏紧、< −10% 偏松。"
+               "租金是算力的市场价，供不应求时先涨租金；它进 AI 这条线的供给判断，不进存储价格标签。",
+    "nand_chg": "判断 NAND 闪存的供需。TLC 512Gb wafer 现货的变化（周度报价）。NAND 和 DRAM 周期大体同步，但常有错位，作参考。",
+    "ppi_yoy": "判断芯片出厂价格处在低位还是高位。美国半导体及电子元件 PPI 同比，> 10% 算高位、< 5% 算还没涨起来。"
+               "它变化慢，不定涨跌标签，但景气位置判断用它区分「刚开始涨」和「涨到头了」。",
+    "korea_yoy": "判断全球芯片的实际出货，是最早公布的硬数据。韩国芯片出口同比（优先全月，其次前 20 日、前 10 日），> 10% 偏强、< 0 偏弱。"
+                 "韩国占全球存储出货的大头，每月 1、11、21 日就有数；涨价时金额增长会高估出货量。",
+    "tsmc_yoy": "判断 AI 与先进制程的实际出货。台积电近 3 个月营收同比，> 15% 偏强、< 0 偏弱。"
+                "台积电代工了几乎所有 AI 加速器，月营收次月 10 日前公布，是验证 AI 需求最直接的数。",
+    "ip_yoy": "判断美国本土芯片生产。美国半导体及电子元件工业产出 3 个月均值的同比，> 5% 偏强、< 0 偏弱。同步指标，和其他出货数据互相验证。",
+}
+
 EPS_NAMES = {"NVDA": "英伟达", "TSM": "台积电", "AVGO": "博通", "QCOM": "高通", "INTC": "英特尔", "MU": "美光"}
 
 
@@ -74,6 +119,7 @@ class SemisBuilder:
         self.now = now or datetime.combine(self.asof, datetime.min.time(), tzinfo=timezone.utc)
         self.charts: dict[str, dict] = {}
         self.leading: list[dict] = []
+        self.facts: dict = {}  # 观察清单要用的当前读数
 
     # -- 取数 ---------------------------------------------------------------
     def fred(self, sid: str) -> Series:
@@ -196,6 +242,7 @@ class SemisBuilder:
             v["eps_ai"], v["eps_ai_names"] = eps_ai[-1][1], names
 
         st = I.ai_demand_state(v)
+        self.facts["capex_q"] = v.get("capex_q", "")
         charts = self.add(
             Chart("capex", "云厂商资本开支（单季）", "亿美元",
                   [Line(SEC[t][1], ts.scale(self.sec_q(t, "capex"), 1e-8), "bar") for t in cloud],
@@ -269,6 +316,7 @@ class SemisBuilder:
         if eps:
             v["eps_trad"], v["eps_trad_names"] = eps[-1][1], names
         st = I.trad_demand_state(v)
+        self.facts["analog_q"] = v.get("analog_q", "")
         charts = self.add(
             Chart("orders", "美国计算机与电子产品新订单：3 个月同比", "%", [Line("同比", orders_yoy)], core=True,
                   start=date(2000, 1, 1), note="FRED A34SNO。M3 调查不单独公布半导体订单，用上一级行业代替。"),
@@ -327,6 +375,8 @@ class SemisBuilder:
         if dio_yoy:
             v["dio_yoy"], v["dio_names"] = sum(dio_yoy) / len(dio_yoy), "、".join(dio_names)
         st = I.inventory_state(v)
+        if gap:
+            self.facts["inv_gap"] = (gap[-1][1], gap[-1][0].isoformat()[:7])
         charts = self.add(
             Chart("inv_cycle", f"库存周期：{src}出货与库存同比", "%",
                   [Line("出货（3 个月均值）同比", ship_yoy), Line("库存同比", inv_yoy)], core=True,
@@ -395,6 +445,8 @@ class SemisBuilder:
         if ppi_yoy:
             v["ppi_yoy"] = ppi_yoy[-1][1]
         st = I.price_state(v)
+        if "dram_chg" in v:
+            self.facts["dram"] = (v["dram_chg"], window)
 
         # GPU 租金：算力的「价格」，进 AI 的供给松紧，不进本维标签
         gpu = {}
@@ -495,6 +547,8 @@ class SemisBuilder:
         if cg:
             v["tsmc_capex"] = cg[-1][1]
         st = I.capacity_state(v)
+        if equip_yoy:
+            self.facts["equip"] = (equip_yoy[-1][1], v["equip_q"])
         charts = self.add(
             Chart("equip", "设备商单季营收：同比", "%",
                   [Line("三家合计", equip_yoy)] + [Line(SEC[t][1], ts.pct_change(self.sec_q(t, "revenue"), 4, "Q"), dash=True)
@@ -543,6 +597,7 @@ class SemisBuilder:
         if ip_yoy:
             v["ip_yoy"] = ip_yoy[-1][1]
         st = I.shipments_state(v)
+        self.facts["korea"] = (v.get("korea_yoy"), v.get("korea_period", ""))
         charts = self.add(
             Chart("korea", "韩国芯片出口：同比", "%", [Line("全月", k_yoy), Line("前 20 日", k_d20, dash=True)], core=True,
                   note="来自每日笔记（关税厅速报、产业通商部全月初值）；历史从 2026-06 开始。"),
@@ -597,33 +652,41 @@ class SemisBuilder:
         price = self.price()
         cap = self.capacity()
         ship = self.shipments(price[2]["label"])
-        dims = [("ai_demand", "AI 需求", ai), ("trad_demand", "传统需求", trad), ("inventory", "库存周期", inv),
-                ("price", "价格", price), ("capacity", "产能", cap), ("shipments", "出货确认", ship)]
+        # 顺序：五个维度（AI 需求、传统需求、产能、库存、价格），出货放最后作同步验证
+        dims = [("ai_demand", "AI 需求", ai), ("trad_demand", "传统需求", trad), ("capacity", "产能", cap),
+                ("inventory", "库存", inv), ("price", "价格", price), ("shipments", "出货（同步验证）", ship)]
         st = {k: s for k, _, (_, _, s) in dims}
 
-        def has(s: dict) -> int | None:
-            return None if s["label"] == "数据不足" else s["level"]
+        # 景气位置：两条线各算一次，库存、价格、产能共用
+        pos_ai = I.line_position("ai", st["ai_demand"], st["inventory"], st["price"], st["capacity"], st["shipments"])
+        pos_trad = I.line_position("trad", st["trad_demand"], st["inventory"], st["price"], st["capacity"], st["shipments"])
+        pos = I.position(pos_ai, pos_trad, st["shipments"])
+        phase = pos_ai["phase"] if pos_ai["phase"] == pos_trad["phase"] else (pos_ai["phase"] or pos_trad["phase"])
+        pos["watch"] = I.watch_list(phase, self.watch_now(st))
+        pos["cycle"] = list(I.CYCLE)
 
-        gpu_vote = I.vote(self.gpu_90d, I.GPU_UP, I.GPU_DOWN) if self.gpu_90d is not None else None
-        ai_t = I.tightness([gpu_vote, has(st["price"]), has(st["capacity"])])
-        trad_t = I.tightness([has(st["inventory"]), has(st["price"]), has(st["capacity"])])
-        ai_why = "、".join(x for x in (
-            gpu_vote is not None and f"GPU 租金 90 天 {self.gpu_90d:+.0f}%",
-            has(st["price"]) is not None and f"存储{st['price']['label']}",
-            has(st["capacity"]) is not None and f"设备投资{st['capacity']['label']}") if x)
-        trad_why = "、".join(x for x in (
-            has(st["inventory"]) is not None and st["inventory"]["label"],
-            has(st["price"]) is not None and f"存储{st['price']['label']}",
-            has(st["capacity"]) is not None and f"设备投资{st['capacity']['label']}") if x)
-        ai_v = I.line_verdict("AI 算力", st["ai_demand"], ai_t, ai_why)
-        trad_v = I.line_verdict("传统芯片", st["trad_demand"], trad_t, trad_why)
+        # 「领先 vs 同步」：领先指标的合计方向有没有被出货确认（放在同步验证那一行）
         scored = [{"偏多": 1, "偏空": -1, "中性": 0}[x["dir"]] for x in self.leading if x["score"]]
         lead_score = sum(scored) / len(scored) if scored else None
-        confirm = I.confirm_text(lead_score, st["shipments"])
-        env = I.environment(ai_v, trad_v, confirm)
+        ship_st = st["shipments"]
+        # 锚点括号在依据层已有，这里只留读数
+        facts = [re.sub(r"（[^（）]*偏强[^（）]*）", "", f"{w['k']} {w['t']}") for w in ship_st.get("why", [])]
+        pos["confirm"] = f"{I.confirm_text(lead_score, ship_st)}。" + "；".join(facts)
+
+        def line_text(p: dict) -> str:
+            if not p["votes"]:
+                return p["name"]
+            c = p["counts"]
+            tally = "、".join(f"{k} {c[k]} 票" for k in I.STAGES if c[k])
+            return f"{p['name']}（{tally}）：{I.STAGE_MEANING[p['name']]}"
+
+        lines = [{"k": "AI 算力", "t": line_text(pos_ai)}, {"k": "传统芯片", "t": line_text(pos_trad)},
+                 {"k": "同步验证", "t": pos["confirm"]}]
 
         out_dims, sections = [], []
         for key, name, (groups, metrics, state) in dims:
+            for m in metrics:
+                m.about = ABOUT.get(m.id, "")
             out_dims.append({"key": key, "name": name, "label": state["label"], "why": state.get("why", []),
                              "head": state["head"],
                              "metrics": [x for x in (metric_json(m, state.get("anchors", {}), self.charts) for m in metrics) if x]})
@@ -632,20 +695,45 @@ class SemisBuilder:
         leading = sorted(self.leading, key=lambda x: (tier_order[x["tier"]], x["line"]))
         return {
             "asof": self.asof.isoformat(),
-            "method": "AI 算力与传统芯片分两条线判断，每条线按「需求 × 供给松紧」落到象限：需求看领先指标"
-                      "（AI：云厂商资本开支、OpenRouter 用量、AI 芯片 EPS 修正；传统：美国电子产品新订单、联发科 + 联电营收、"
-                      "模拟芯片营收、高通与英特尔 EPS 修正），每个数按锚点投一票取平均；供给松紧由库存周期（出货 − 库存）、"
-                      "存储价格、设备投资（扩产记为未来偏松）合成，AI 这条线另看 GPU 租金。"
-                      "出货确认（韩国芯片出口、台积电营收、美国半导体产出）是同步指标，用来检查领先信号有没有被确认，不进象限。"
-                      "阈值都写在 pipeline/semis/interpret.py。",
-            "verdict": {"name": env["name"], "headline": env["head"], "lines": env["lines"], "label": "整体景气",
+            "method": "景气位置分两步判断。方向：看这条线的需求档位（AI：云厂商资本开支、OpenRouter 用量、AI 芯片 EPS 修正；"
+                      "传统：美国电子产品新订单、联发科 + 联电营收、模拟芯片营收、高通与英特尔 EPS 修正，每个数按锚点投一票取平均），"
+                      "需求扩张且出货不走弱为上行，需求收缩为下行，其余为震荡。阶段：按经典半导体周期，由需求（增速在低位加速 / 高位 / 高位回落）、"
+                      "库存（被动去库 → 主动补库 → 被动补库 → 主动去库）、价格（结合 PPI 是否已在高位）、产能（收缩 / 平稳 / 扩张）"
+                      "各投一票，票最多的阶段胜出，平票取中期。库存、价格、产能两条线共用，只有需求分开。"
+                      "出货（韩国芯片出口、台积电营收、美国半导体产出）是同步指标，用来验证位置。阈值都写在 pipeline/semis/interpret.py。",
+            "verdict": {"name": pos["name"], "headline": pos["head"], "lines": lines, "label": "景气位置",
                         "lead_score": lead_score},
+            "position": pos,
             "leading": leading,
             "dimensions": out_dims,
             "releases": self.releases(),
             "sections": sections,
             "charts": self.charts,
         }
+
+    def watch_now(self, st: dict) -> dict[str, str]:
+        """观察清单每项的当前读数文字。"""
+        now = {}
+        ai, trad = st["ai_demand"], st["trad_demand"]
+        if ai.get("yoy") is not None:
+            acc = f"，比上季 {ai['accel']:+.1f} 个百分点" if ai.get("accel") is not None else ""
+            now["capex_yoy"] = f"{ai['yoy']:+.1f}%（{self.facts.get('capex_q', '')}{acc}）"
+        if "inv_gap" in self.facts:
+            g, d = self.facts["inv_gap"]
+            now["inv_gap"] = f"{g:+.1f} 个百分点（{d}）"
+        if "dram" in self.facts:
+            c, w = self.facts["dram"]
+            now["dram_chg"] = f"{w} 天 {c:+.1f}%"
+        if "equip" in self.facts:
+            c, q = self.facts["equip"]
+            now["equip_yoy"] = f"{c:+.1f}%（{q}）"
+        k = self.facts.get("korea")
+        if k and k[0] is not None:
+            now["korea_yoy"] = f"{k[0]:+.1f}%（{k[1]}）"
+        if trad.get("yoy") is not None:
+            acc = f"，比上季 {trad['accel']:+.1f} 个百分点" if trad.get("accel") is not None else ""
+            now["analog_yoy"] = f"{trad['yoy']:+.1f}%（{self.facts.get('analog_q', '')}{acc}）"
+        return now
 
 
 def build_dashboard(src: Sources, asof: date | None = None, now: datetime | None = None) -> dict:

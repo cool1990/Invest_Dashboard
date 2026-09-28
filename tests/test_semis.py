@@ -221,7 +221,7 @@ class BuildTest(unittest.TestCase):
     def test_end_to_end(self):
         d = B.build_dashboard(fixture_sources(), date(2026, 9, 28), datetime(2026, 9, 28, 2, tzinfo=timezone.utc))
         keys = [x["key"] for x in d["dimensions"]]
-        self.assertEqual(keys, ["ai_demand", "trad_demand", "inventory", "price", "capacity", "shipments"])
+        self.assertEqual(keys, ["ai_demand", "trad_demand", "capacity", "inventory", "price", "shipments"])
         labels = {x["key"]: x["label"] for x in d["dimensions"]}
         self.assertNotIn("数据不足", labels.values())
         self.assertEqual(labels["ai_demand"], "扩张")  # 资本开支同比 +46%、用量 +53%、EPS 平均 +6%
@@ -246,7 +246,15 @@ class BuildTest(unittest.TestCase):
             for m in dim["metrics"]:
                 if m["chart"]:
                     self.assertIn(m["chart"], d["charts"])
-        self.assertIn(d["verdict"]["name"], set(I.QUAD.values()) | {"分化"})
+        self.assertIn(d["verdict"]["name"], set(I.CYCLE) | {"分化"})
+        # 景气位置：两条线都有投票依据，观察清单有当前值和信号
+        pos = d["position"]
+        self.assertTrue(pos["lines"]["ai"]["votes"])
+        self.assertTrue(all(w["now"] and w["signal"] for w in pos["watch"]))
+        # 每个半导体指标都有说明
+        for dim in d["dimensions"]:
+            for m in dim["metrics"]:
+                self.assertTrue(m.get("about"), m["id"])
 
     def test_empty_sources(self):
         d = B.build_dashboard(B.Sources(), date(2026, 9, 28))
@@ -260,6 +268,52 @@ class BuildTest(unittest.TestCase):
         d = B.build_dashboard(src, date(2026, 9, 28))
         why = next(x for x in d["dimensions"] if x["key"] == "ai_demand")["why"][0]["t"]
         self.assertNotIn("比上季同比", why)
+
+
+def _st(label, level=0, **kw):
+    return {"label": label, "level": level, **kw}
+
+
+class PositionTest(unittest.TestCase):
+    def pos(self, demand, inv, price, cap, ship="走强", line="ai"):
+        return I.line_position(line, demand, inv, price, cap, _st(ship))
+
+    def test_up_stages(self):
+        early = self.pos(_st("加速", 1, yoy=15, accel=8), _st("被动去库", gap=5), _st("涨价", ppi=2), _st("收缩", equip=-5))
+        self.assertEqual(early["name"], "上行早期")
+        mid = self.pos(_st("扩张", 1, yoy=50, accel=2), _st("主动补库", gap=2), _st("涨价", ppi=8), _st("平稳", equip=5))
+        self.assertEqual(mid["name"], "上行中期")
+        late = self.pos(_st("扩张", 1, yoy=80, accel=-4), _st("被动补库", gap=-3), _st("企稳", ppi=20), _st("扩张", equip=25))
+        self.assertEqual(late["name"], "上行后期")
+        self.assertEqual(late["counts"]["后期"], 4)
+
+    def test_down_stages(self):
+        early = self.pos(_st("收缩", -1, yoy=-5, accel=-5), _st("被动补库", gap=-3), _st("企稳", ppi=20), _st("扩张", equip=20))
+        self.assertEqual(early["name"], "下行早期")
+        late = self.pos(_st("收缩", -1, yoy=-10, accel=5), _st("主动去库", gap=3), _st("企稳", ppi=2), _st("收缩", equip=-10))
+        self.assertEqual(late["name"], "下行后期")
+
+    def test_flat_and_tie(self):
+        flat = self.pos(_st("放缓", 0), _st("主动补库", gap=1), _st("企稳"), _st("平稳"), ship="持平")
+        self.assertEqual(flat["phase"], "震荡")
+        # 平票取中期：早期 2 票、后期 2 票
+        tie = self.pos(_st("加速", 1, yoy=10, accel=6), _st("被动去库", gap=4), _st("企稳", ppi=20), _st("扩张", equip=20))
+        self.assertEqual(tie["name"], "上行中期")
+        # 需求扩张但出货走弱：不算上行
+        weak = self.pos(_st("扩张", 1, yoy=50), _st("被动补库", gap=-2), _st("企稳"), _st("扩张"), ship="走弱")
+        self.assertEqual(weak["phase"], "下行")
+
+    def test_merge_and_watch(self):
+        a = {"phase": "上行", "stage": "后期", "name": "上行后期", "votes": []}
+        t = {"phase": "上行", "stage": "中期", "name": "上行中期", "votes": []}
+        p = I.position(a, t, _st("走强"))
+        self.assertEqual(p["name"], "分化")
+        self.assertIn("AI 算力上行后期", p["head"])
+        self.assertEqual(I.position(a, dict(a), _st("走强"))["name"], "上行后期")
+        w = I.watch_list("上行", {"inv_gap": "+6.5"})
+        self.assertEqual(len(w), 1)
+        self.assertIn("转负", w[0]["signal"])
+        self.assertIn("由负转正", I.watch_list("下行", {"inv_gap": "-2"})[0]["signal"])
 
 
 class StateLogTest(unittest.TestCase):

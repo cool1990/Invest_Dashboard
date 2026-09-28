@@ -68,8 +68,8 @@ function renderStateLog() {
 }
 
 // 五个维度一行一个：名字 | 标签 + 理由（每条理由：小结论 + 用哪几个数、对照什么锚点）
-function renderStates() {
-  document.getElementById("states").innerHTML = DATA.dimensions.map((d) => {
+function renderStates(dims) {
+  document.getElementById("states").innerHTML = (dims || DATA.dimensions).map((d) => {
     const why = d.why || [];
     return `<a class="st-row" href="#${d.key}">
       <span class="st-name">${esc(d.name)}</span>
@@ -96,6 +96,7 @@ function metricsHTML(d) {
       <span class="ev-val"><i class="m-label">最新</i><b>${esc(m.text)}</b><small>${esc(m.unit)}</small><div class="small muted">${esc(m.date)}</div></span>
       <span class="ev-chg"><i class="m-label">较上期</i>${chgHTML(m.chg)}</span>
       <span class="ev-anchor"><i class="m-label">对照</i>${esc(m.anchor || "—")}</span>
+      ${m.about ? `<p class="ev-about">${esc(m.about)}</p>` : ""}
     </div>`).join("");
   if (!rows) return "";
   return `<div class="card evid"><div class="ev ev-head"><span>指标</span><span>最新</span><span>较上期</span><span>对照的锚点</span></div>${rows}</div>`;

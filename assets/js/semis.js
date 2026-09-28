@@ -1,30 +1,57 @@
-// 半导体页：共用的三层版式在 board.js，这里放领先指标一览、说明和数据状态。
+// 半导体页：共用的三层版式在 board.js。这里放景气位置（周期刻度、两条线、投票依据、观察清单）、说明和数据状态。
 "use strict";
 
-const LINE_NAME = { ai: "AI 算力", trad: "传统芯片", both: "两条线" };
-const DIR_CLASS = { "偏多": "up", "偏空": "down" };
+const LINE_NAME = { ai: "AI 算力", trad: "传统芯片" };
 
-// 领先指标一览：按领先多久分组，每行写方向（对景气偏多 / 偏空 / 中性）
-function renderLeading() {
-  const items = DATA.leading || [];
-  const el = document.getElementById("leading");
-  if (!items.length) {
-    el.innerHTML = `<h2 id="lead-title" class="v-label">领先指标</h2><p class="small muted">还没有数据。</p>`;
-    return;
-  }
-  const scored = items.filter((x) => x.score);
-  const n = (d) => scored.filter((x) => x.dir === d).length;
-  const tiers = [...new Set(items.map((x) => x.tier))];
-  el.innerHTML = `
-    <div class="lead-head"><h2 id="lead-title" class="v-label">领先指标一览</h2>
-      <span class="small muted">计入合计 ${scored.length} 项：偏多 ${n("偏多")}、偏空 ${n("偏空")}、中性 ${n("中性")}</span></div>
-    ${tiers.map((t) => `<div class="lead-tier">领先 ${esc(t)}</div>
-      <ul class="lead-list">${items.filter((x) => x.tier === t).map((x) => `<li>
-        <span class="lead-name">${esc(x.name)}<span class="tag tag-ref">${esc(LINE_NAME[x.line] || x.line)}</span>
-          <div class="small muted">${esc(x.meaning)}${x.score ? "" : "（不计入合计）"}</div></span>
-        <span class="lead-val"><b>${esc(x.value)}</b><div class="small muted">${esc(x.date)}</div></span>
-        <span class="lead-dir ${DIR_CLASS[x.dir] || ""}">${esc(x.dir)}</span>
-      </li>`).join("")}</ul>`).join("")}`;
+// 周期刻度：上行早 → 中 → 后 → 下行早 → 中 → 后，标出两条线各在哪；震荡另标
+function trackHTML(p) {
+  const at = (name) => Object.entries(p.lines).filter(([, l]) => l.name === name).map(([k]) => LINE_NAME[k]);
+  const cell = (name) => {
+    const who = at(name);
+    return `<li class="${who.length ? "on" : ""} ${name.startsWith("上行") ? "up" : "down"}">
+      <span>${esc(name.slice(2))}</span>${who.map((w) => `<b>${esc(w)}</b>`).join("")}</li>`;
+  };
+  const flat = Object.entries(p.lines).filter(([, l]) => (l.name || "").startsWith("震荡")).map(([k]) => LINE_NAME[k]);
+  return `<div class="track" role="img" aria-label="周期位置：${esc(p.head)}">
+    <div class="track-seg"><div class="track-h">上行</div><ol>${p.cycle.slice(0, 3).map(cell).join("")}</ol></div>
+    <div class="track-seg"><div class="track-h">下行</div><ol>${p.cycle.slice(3).map(cell).join("")}</ol></div>
+    <div class="track-seg flat"><div class="track-h">&nbsp;</div><ol><li class="${flat.length ? "on" : ""}"><span>震荡</span>${flat.map((w) => `<b>${esc(w)}</b>`).join("")}</li></ol></div>
+  </div>`;
+}
+
+// 投票依据：两条线的需求各一行，库存、价格、产能两条线共用
+function votesHTML(p) {
+  const ai = p.lines.ai.votes || [], trad = p.lines.trad.votes || [];
+  const rows = [];
+  if (ai[0] && ai[0][0].includes("需求")) rows.push(ai[0]);
+  if (trad[0] && trad[0][0].includes("需求")) rows.push(trad[0]);
+  const shared = (ai.length ? ai : trad).filter((v) => !v[0].includes("需求"));
+  rows.push(...shared);
+  if (!rows.length) return "";
+  return `<details class="votes"><summary>为什么是这个阶段：各维度投票</summary>
+    <ul>${rows.map(([dim, stage, why]) => `<li><span class="vote-dim">${esc(dim)}</span><span class="vote-st">${esc(stage)}</span><span>${esc(why)}</span></li>`).join("")}</ul>
+    <p class="small muted">每个维度按经典半导体周期给早期 / 中期 / 后期投一票，票最多的阶段胜出，平票取中期。库存、价格、产能两条线共用。</p>
+  </details>`;
+}
+
+function watchHTML(p) {
+  const w = p.watch || [];
+  if (!w.length) return "";
+  return `<div class="watch"><div class="v-label">接下来盯这些：出现什么说明位置在变</div>
+    <ul>${w.map((x) => `<li><span class="w-name">${esc(x.name)}</span><span class="w-now">现在 ${esc(x.now)}</span><span class="w-sig">${esc(x.signal)}</span></li>`).join("")}</ul></div>`;
+}
+
+function renderPosition() {
+  const p = DATA.position;
+  const v = DATA.verdict || {};
+  if (!p) { renderVerdict(); return; }
+  document.getElementById("verdict").innerHTML = `
+    <div class="v-label">景气位置</div>
+    <h2 class="v-head">${esc(v.headline || "—")}</h2>
+    ${trackHTML(p)}
+    <ul class="v-lines">${(v.lines || []).map((x) => `<li><span class="v-k">${esc(x.k)}</span><span>${esc(x.t)}</span></li>`).join("")}</ul>
+    ${votesHTML(p)}
+    ${watchHTML(p)}`;
 }
 
 function renderNotes() {
@@ -59,10 +86,10 @@ async function main() {
     return;
   }
   document.getElementById("asof").textContent = `数据更新于 ${(DATA.status?.updated_at || DATA.asof).replace("T", " ").replace("Z", " UTC")}`;
-  renderVerdict();
+  renderPosition();
   renderStateLog();
-  renderLeading();
-  renderStates();
+  // 第一屏的理由只列五个维度；出货在景气位置里作同步验证，依据层仍有一块
+  renderStates(DATA.dimensions.filter((d) => d.key !== "shipments"));
   renderRange();
   renderSections();
   renderUpcoming();

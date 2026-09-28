@@ -106,6 +106,7 @@ class Metric:
     note: str = ""
     model: bool = False  # 模型预测，不进判断
     ref: bool = False  # 已公布的数据，但只作参考，不进判断
+    about: str = ""  # 这个指标判断什么、怎么判断、为什么有效（几句话）
 
 
 def signed(fmt: str) -> str:
@@ -137,4 +138,4 @@ def metric_json(m: Metric, anchors: dict[str, str], charts: dict) -> dict | None
     return {"id": m.id, "name": m.name, "text": m.fmt.format(v), "unit": m.unit,
             "date": period_text(d, m.freq), "chg": chg, "anchor": anchors.get(m.id, ""),
             "note": m.note, "chart": m.chart if m.chart in charts else None, "model": m.model,
-            "ref": m.ref}
+            "ref": m.ref, **({"about": m.about} if m.about else {})}
