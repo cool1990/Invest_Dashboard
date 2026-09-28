@@ -96,24 +96,10 @@ main { max-width: 1320px; margin: 0 auto; padding: 24px 16px 64px; }
   background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
 }
 
-/* ---- 五维评分 ---- */
-.scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; }
-.score { padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 6px; }
-.score-top { display: flex; justify-content: space-between; align-items: baseline; }
-.score-name { font-weight: 600; font-size: 15px; }
-.score-name a { color: inherit; }
-.score-label { font-size: 13px; color: var(--ink-2); padding: 1px 8px; border-radius: 999px; background: var(--surface-2); }
-.score-num { font-size: 28px; font-weight: 600; line-height: 1.1; }
-.score-num small { font-size: 12.5px; font-weight: 400; color: var(--muted); margin-left: 6px; }
-.meter { position: relative; height: 6px; border-radius: 3px; background: linear-gradient(90deg, color-mix(in srgb, var(--neg) 35%, var(--surface-2)), var(--surface-2) 50%, color-mix(in srgb, var(--pos) 35%, var(--surface-2))); }
-.meter i { position: absolute; top: -3px; width: 4px; height: 12px; border-radius: 2px; background: var(--ink); transform: translateX(-2px); box-shadow: 0 0 0 2px var(--surface); }
-.meter-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
-.spark { height: 54px; }
-.score details { font-size: 12.5px; color: var(--ink-2); }
-.score summary { cursor: pointer; color: var(--muted); }
-.comp { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 10px; margin-top: 6px; font-variant-numeric: tabular-nums; }
-.comp .z { text-align: right; min-width: 3.2em; }
-.method { font-size: 12.5px; color: var(--muted); margin: 0 0 28px; }
+/* ---- 维度卡通用 ---- */
+.score-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 8px; }
+.score-name { font-weight: 600; font-size: 15px; white-space: nowrap; }
+.score-label { font-size: 13px; color: var(--ink-2); padding: 1px 8px; border-radius: 999px; background: var(--surface-2); white-space: nowrap; }
 
 /* ---- 分区导航 ---- */
 .section-nav {
@@ -127,16 +113,7 @@ main { max-width: 1320px; margin: 0 auto; padding: 24px 16px 64px; }
 
 section.dim { padding-top: 28px; scroll-margin-top: 110px; }
 section.dim > h2 { font-size: 20px; }
-section.dim > .desc { color: var(--ink-2); margin: 4px 0 14px; }
 .group-title { font-size: 14px; color: var(--ink-2); font-weight: 600; margin: 22px 0 10px; }
-
-/* ---- 关键读数 ---- */
-.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
-.kpi { padding: 10px 12px; }
-.kpi .k-name { font-size: 12.5px; color: var(--ink-2); }
-.kpi .k-val { font-size: 19px; font-weight: 600; margin-top: 2px; }
-.kpi .k-val small { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: 3px; }
-.kpi .k-meta { font-size: 11.5px; color: var(--muted); margin-top: 2px; font-variant-numeric: tabular-nums; }
 
 /* ---- 图 ---- */
 .charts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
@@ -172,81 +149,38 @@ table.data th:first-child, table.data td:first-child { text-align: left; }
 .empty { padding: 40px; text-align: center; color: var(--ink-2); }
 footer { max-width: 1320px; margin: 0 auto; padding: 0 16px 40px; color: var(--muted); font-size: 12px; }
 
-/* ---- 第二版：总判断、核心指标、数据发布 ---- */
+/* ---- 第一层：结论 ---- */
 .verdict { padding: 18px 20px; margin-bottom: 12px; }
 .v-label { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
 .v-head { font-size: 22px; margin-top: 2px; }
 .v-sub { color: var(--ink-2); margin-top: 4px; }
-.points { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 6px; }
-.points li { display: grid; grid-template-columns: auto minmax(180px, 280px) 1fr; gap: 10px; align-items: baseline; }
-.points .pt-name b { font-weight: 600; margin-left: 4px; }
-.points .pt-name small { color: var(--muted); margin-left: 2px; }
-.points .pt-text { color: var(--ink-2); }
-@media (max-width: 760px) { .points li { grid-template-columns: auto 1fr; } .points .pt-text { grid-column: 1 / -1; } }
-
-.lv { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; white-space: nowrap; }
-.lv b { font-size: 10px; }
-.lv-alert { color: var(--st-alert); }
-.lv-watch { color: var(--st-watch); }
-.lv-ok { color: var(--st-ok); }
-
-.score-sum { font-size: 12.5px; color: var(--ink-2); }
 h2.layer { font-size: 18px; margin: 30px 0 4px; }
 .layer-sub { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
 
-.signals { padding: 4px 0; }
-.sig { display: grid; grid-template-columns: 1.25fr .95fr 1.05fr .6fr 1fr 2.6fr; gap: 10px; padding: 9px 16px; border-top: 1px solid var(--grid); align-items: start; font-variant-numeric: tabular-nums; }
-.sig-head { border-top: 0; font-size: 12px; color: var(--muted); padding-top: 8px; padding-bottom: 6px; }
-.sig-dim { display: flex; gap: 8px; align-items: baseline; padding: 12px 16px 4px; border-top: 1px solid var(--border); font-weight: 600; }
-.sig-dim a { color: var(--ink); }
-.sig-name a { color: var(--ink); font-weight: 500; }
-.sig-name a:hover { color: var(--accent); }
-.sig-val b { font-size: 16px; }
-.sig-val small { color: var(--muted); margin-left: 3px; }
-.sig-interp { color: var(--ink-2); font-size: 13px; }
-.m-label { display: none; font-style: normal; color: var(--muted); font-size: 11.5px; margin-right: 4px; }
-@media (max-width: 900px) {
-  .sig-head { display: none; }
-  .sig { grid-template-columns: 1fr 1fr; gap: 4px 12px; }
-  .sig-name { grid-column: 1 / -1; }
-  .sig-interp { grid-column: 1 / -1; }
-  .m-label { display: inline; }
-}
-
-.releases { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; }
-@media (max-width: 960px) { .releases { grid-template-columns: minmax(0, 1fr); } }
 .rel { padding: 14px 16px; }
 .rel h3 { font-size: 14.5px; }
 .rel table.data td { vertical-align: top; }
 
-.c-interp { font-size: 12.5px; color: var(--ink-2); margin-top: 6px; }
-.c-interp .ci-name { color: var(--ink); font-weight: 600; }
-section.dim > h2 .score-label { font-size: 12.5px; font-weight: 400; vertical-align: middle; }
 details.more { margin-top: 12px; }
 details.more > summary { cursor: pointer; color: var(--accent); padding: 6px 0; }
 
-/* ---- 第三版：五维状态卡、分歧与风险、变化列 ---- */
-.states { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 8px; }
-.state { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+/* ---- 五句状态 ---- */
+.states { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.state { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; color: inherit; }
+.state:hover { text-decoration: none; border-color: var(--axis); }
 .state-head { font-size: 15px; font-weight: 600; line-height: 1.45; }
-.state-pts { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: 12.5px; color: var(--ink-2); }
-.state-pts li { display: grid; grid-template-columns: auto 1fr; gap: 6px; align-items: baseline; }
-.state-next { font-size: 12px; color: var(--ink-2); border-top: 1px solid var(--grid); padding-top: 6px; margin-top: auto; }
-details.risks { margin-top: 12px; }
-details.risks > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
-.risk-dim { margin-top: 10px; }
-.risk-name { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
-.sig { grid-template-columns: 1.25fr .95fr .8fr .8fr 1.15fr 2.4fr; }
 #upcoming { padding: 10px 16px; }
-@media (max-width: 900px) { .sig { grid-template-columns: 1fr 1fr; } }
 
-/* ---- 第四版：情景、影响、日志 ---- */
+/* ---- 第三层：情景、日志 ---- */
 .statelog { padding: 12px 20px; margin-bottom: 12px; }
 .log { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .log li { display: grid; grid-template-columns: 90px minmax(160px, auto) 1fr; gap: 10px; align-items: baseline; }
 @media (max-width: 760px) { .log li { grid-template-columns: 1fr; gap: 0; } }
+table.upc th, table.upc td { text-align: left; }
+table.upc td:nth-child(n+3), table.upc th:nth-child(n+3) { text-align: right; }
 tr.has-scen td { border-bottom: 0; }
-tr.scen td { padding-top: 0; padding-bottom: 10px; }
+tr.scen td { padding-top: 0; padding-bottom: 10px; text-align: left !important; white-space: normal; }
+tr.scen summary { cursor: pointer; color: var(--accent); font-size: 12.5px; }
 .scen-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 3px; }
 .scen-list li { display: grid; grid-template-columns: 150px 1fr; gap: 10px; font-size: 12.5px; color: var(--ink-2); white-space: normal; }
 .scen-list li.chg { color: var(--ink); }
@@ -254,3 +188,27 @@ tr.scen td { padding-top: 0; padding-bottom: 10px; }
 .scen-rng { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fc-tag { font-size: 11.5px; color: var(--accent); white-space: nowrap; }
 @media (max-width: 760px) { .scen-list li { grid-template-columns: 1fr; gap: 0; } }
+
+/* ---- 第二层：每维的几个数 ---- */
+section.dim > h2 { margin-bottom: 10px; }
+.evid { padding: 2px 0; margin-bottom: 12px; }
+.ev { display: grid; grid-template-columns: 1.3fr .8fr .8fr 2.4fr; gap: 12px; padding: 9px 16px; border-top: 1px solid var(--grid); align-items: start; font-variant-numeric: tabular-nums; }
+.ev-head { border-top: 0; font-size: 12px; color: var(--muted); padding-top: 8px; padding-bottom: 6px; }
+.ev-name a { color: var(--ink); font-weight: 500; }
+.ev-name a:hover { color: var(--accent); }
+.ev-val b { font-size: 16px; }
+.ev-val small { color: var(--muted); margin-left: 3px; }
+.ev-anchor { color: var(--ink-2); font-size: 13px; }
+.tag { font-size: 11px; color: var(--st-watch); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; font-weight: 400; white-space: nowrap; }
+.m-label { display: none; font-style: normal; color: var(--muted); font-size: 11.5px; margin-right: 4px; }
+@media (max-width: 760px) {
+  .ev-head { display: none; }
+  .ev { grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+  .ev-name, .ev-anchor { grid-column: 1 / -1; }
+  .m-label { display: inline; }
+}
+
+/* ---- 页脚说明 ---- */
+.notes { margin-top: 40px; padding: 12px 16px; font-size: 12.5px; color: var(--ink-2); }
+.notes p { margin: 4px 0; }
+.notes + .health { margin-top: 12px; }

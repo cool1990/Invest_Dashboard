@@ -194,13 +194,9 @@ class ConsensusTest(unittest.TestCase):
         self.assertEqual(rec["Non-Farm Employment Change"]["verdict"], "好于预期")
         self.assertEqual(rec["Unemployment Rate"]["verdict"], "差于预期")
         self.assertEqual([r["title"] for r in dash["releases"]["upcoming"]], ["ISM 服务业 PMI"])
-        sig = {s["id"]: s for s in dash["signals"]["growth"]}
-        self.assertEqual(sig["nfp"]["last_surprise"]["forecast_text"], "150K")
-        self.assertEqual(sig["nfp"]["last_surprise"]["surprise_text"], "+30")
-        # 「下一次发布」取即将发布里的同一指标
-        self.assertIsNone(sig["nfp"]["next"])
+        self.assertEqual(rec["Non-Farm Employment Change"]["surprise_text"], "+30")
 
-    def test_next_release(self):
+    def test_upcoming_and_nowcast(self):
         from datetime import datetime, timezone
         raw = {"PCEPILFE": [(d, 100 + i * 0.25) for i, d in enumerate(months(date(2024, 1, 1), 31))]}
         events = [{"release_at": "2026-09-30T08:30:00-04:00", "title": "Core PCE Price Index m/m",
@@ -210,11 +206,13 @@ class ConsensusTest(unittest.TestCase):
         dash = build_dashboard(raw, [], date(2026, 9, 28), events, nowcast, datetime(2026, 9, 28, tzinfo=timezone.utc))
         up = dash["releases"]["upcoming"][0]
         self.assertEqual((up["dim"], up["ref"]), ("inflation", "2026-08"))
-        self.assertEqual(up["nowcast_text"], "核心 PCE 同比 Nowcast 3.40%")
-        sig = {s["id"]: s for s in dash["signals"]["inflation"]}
-        self.assertEqual(sig["core_pce_mom"]["next"]["forecast_text"], "0.3%")
-        self.assertEqual([n["period"] for n in sig["core_pce_yoy"]["nowcast"]], ["8 月", "9 月"])
-        self.assertEqual(dash["dimensions"][1]["next"][0]["title"], "核心 PCE 环比")
+        # Nowcast 只放在通胀那一块：不在即将发布里重复
+        self.assertNotIn("nowcast_text", up)
+        m = {x["id"]: x for x in dash["dimensions"][1]["metrics"]}
+        nc = m["nowcast"]
+        self.assertEqual((nc["text"], nc["date"], nc["model"]), ("3.49", "2026-09", True))
+        self.assertEqual((nc["chg"]["label"], nc["chg"]["base"]), ("上月", "3.40"))
+        self.assertIn("最新官方", nc["anchor"])
 
 
 class ScenarioTest(unittest.TestCase):
@@ -245,6 +243,7 @@ class ScenarioTest(unittest.TestCase):
         # X ≤ −184 时 < 0（恶化）
         self.assertEqual([g["range"] for g in segs], ["≤ -184K", "-183K ~ -34K", "-33K ~ 266K", "≥ 267K"])
         self.assertTrue(segs[2]["forecast"])
+        self.assertEqual(up["nfp"]["scenario"]["affects"][0], "就业")
         self.assertIn("就业变为「强」", segs[3]["result"])
         self.assertIn("就业变为「疲弱」", segs[1]["result"])
         self.assertIn("就业变为「恶化」", segs[0]["result"])
@@ -274,27 +273,23 @@ class InterpretTest(unittest.TestCase):
     def test_levels(self):
         self.assertEqual(I.core_mom(I.Ctx(0.4))[1], "alert")
         self.assertEqual(I.core_mom(I.Ctx(0.15))[1], "ok")
-        self.assertEqual(I.unrate(I.Ctx(4.5, extra={"sahm": 0.6, "chg12": 0.8}))[1], "alert")
-        self.assertEqual(I.curve(I.Ctx(-0.3))[1], "alert")
-        self.assertEqual(I.curve(I.Ctx(0.2, extra={"inv_days_ago": 30}))[1], "alert")
-        text, lv = I.curve(I.Ctx(0.93, extra={"inv_days_ago": 230}))
-        self.assertEqual(lv, "watch")
-        self.assertIn("约 11 个月", text)
-        self.assertEqual(I.curve(I.Ctx(1.2, extra={"inv_days_ago": None}))[1], "ok")
         # 环比通胀的级别按 3 个月均值
         self.assertEqual(I.core_cpi_mom(I.Ctx(0.29, extra={"avg3": 0.16}))[1], "ok")
-        text, lv = I.effr_path(I.Ctx(4.24, extra={"current": 3.88, "year_end": 4.24, "next_year": 4.76,
-                                                  "dot_year": 4.1, "dot_next": 4.1}))
-        self.assertIn("加息约 1.4 次", text)
-        self.assertEqual(lv, "watch")
 
-    def test_growth_split(self):
-        st = I.growth_state({"gdpnow": 5.0, "gdp_q": 1.5, "nfp3": 71, "nfp3_ago": 38, "unrate_chg12": -0.2,
+    def test_growth_uses_actual_gdp(self):
+        # 产出按已公布的上季实际 GDP 判断，GDPNow 5.0% 只作参考
+        st = I.growth_state({"gdpnow": 5.0, "gdp_q": 1.4838, "nfp3": 71, "nfp3_ago": 38, "unrate_chg12": -0.2,
                              "sahm": -0.07})
-        self.assertEqual(st["label"], "分化")
-        self.assertTrue(st["split"])
+        self.assertEqual(st["head"], "产出接近潜在、就业降温")  # 1.48 按公布精度算 1.5
+        self.assertEqual(st["label"], "接近潜在")
+        self.assertFalse(st["split"])
         self.assertEqual(st["level"], 0)
-        self.assertIn("相差 3.5 个百分点", st["points"][0][0])
+        self.assertIn("不进判断", st["anchors"]["gdpnow"])
+        self.assertIn("高 3.5 个百分点", st["anchors"]["gdpnow"])
+        # 还没有实际值时才用 GDPNow，并在句子里写明
+        only = I.growth_state({"gdpnow": 5.0, "nfp3": 71})
+        self.assertEqual(only["output"], "偏强")
+        self.assertIn("按 GDPNow 预测", only["head"])
         weak = I.growth_state({"gdpnow": 0.3, "gdp_q": 0.8, "nfp3": -20, "unrate_chg12": 0.6, "sahm": 0.6})
         self.assertEqual(weak["label"], "收缩风险")
 
@@ -306,14 +301,21 @@ class InterpretTest(unittest.TestCase):
         self.assertEqual(p["label"], "立场接近中性 · 市场定价加息")
         self.assertIn("加息约 3.5 次", p["head"])
         self.assertIn("鹰 66bp", p["head"])
+        self.assertIn("加息约 1.4 次", p["anchors"]["year_end"])
+        self.assertIn("点阵图 4.10%：高 66bp", p["anchors"]["next_year"])
 
     def test_environment(self):
         g = I.growth_state({"gdpnow": 5.0, "gdp_q": 1.5, "nfp3": 71, "nfp3_ago": 38})
-        i = I.inflation_state({"core_yoy": 3.34, "core_3m": 3.05, "nowcast": [("9 月", 3.49)]})
+        i = I.inflation_state({"core_yoy": 3.34, "core_3m": 3.05, "nowcast": [("8 月", 3.40), ("9 月", 3.49)]})
+        self.assertEqual(i["head"], "核心 PCE 明显高于目标，短期动能持平")
         env = I.environment(g, i, {"head": "x"}, {"label": "宽松"})
         self.assertEqual(env["name"], "通胀粘性")
-        self.assertIn("增长分化（产出偏强、就业降温）", env["head"])
-        self.assertIn("可能再抬头", env["head"])
+        # Nowcast 只比官方高 0.15 个百分点：写「略高」，不写「再抬头」
+        self.assertEqual(env["head"], "通胀粘性：产出接近潜在、就业降温，通胀偏热（Nowcast 略高）")
+        hot = I.inflation_state({"core_yoy": 3.34, "core_3m": 3.05, "nowcast": [("9 月", 3.8)]})
+        self.assertIn("Nowcast 预计明显回升", I.environment(g, hot, {}, {})["head"])
+        flat = I.inflation_state({"core_yoy": 3.34, "core_3m": 3.05, "nowcast": [("9 月", 3.40)]})
+        self.assertNotIn("Nowcast", I.environment(g, flat, {}, {})["head"])
         stag = I.environment({"level": -1, "label": "放缓"}, {"level": 1, "label": "偏热"}, {}, {})
         self.assertEqual(stag["name"], "滞胀风险")
 
@@ -343,16 +345,25 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(dash["verdict"]["name"], "数据不足")
         self.assertEqual(dash["charts"], {})
 
-    def test_change_columns(self):
+    def test_metric_rows(self):
         ms = months(date(2024, 1, 1), 30)
         raw = {"UNRATE": [(d, 4.0 + (0.1 if i == len(ms) - 1 else 0)) for i, d in enumerate(ms)]}
-        sig = {s["id"]: s for s in build_dashboard(raw, [], date(2026, 9, 28))["signals"]["growth"]}
-        c = sig["unrate"]["cmp"]
-        self.assertEqual((c["short"]["text"], c["short"]["dir"], c["short"]["label"]), ("+0.1", "up", "上月"))
-        self.assertEqual(c["long"]["label"], "一年前")
+        m = {x["id"]: x for x in build_dashboard(raw, [], date(2026, 9, 28))["dimensions"][0]["metrics"]}
+        c = m["unrate"]["chg"]
+        self.assertEqual((c["text"], c["dir"], c["label"], c["base"]), ("+0.1", "up", "上月", "4.0"))
+        self.assertEqual(m["unrate"]["date"], "2026-06")
+        self.assertIn("Sahm", m["unrate"]["anchor"])
         raw = {"UNRATE": [(d, 4.0) for d in ms]}
-        sig = {s["id"]: s for s in build_dashboard(raw, [], date(2026, 9, 28))["signals"]["growth"]}
-        self.assertEqual(sig["unrate"]["cmp"]["short"]["text"], "持平")
+        m = {x["id"]: x for x in build_dashboard(raw, [], date(2026, 9, 28))["dimensions"][0]["metrics"]}
+        self.assertEqual(m["unrate"]["chg"]["text"], "持平")
+
+    def test_nfp_row_uses_3m_average(self):
+        # 格子里写 3 个月均值（规则用的数），单月放备注
+        ms = months(date(2026, 1, 1), 8)
+        pay = [(d, 1000.0 + sum((30, 30, 30, 30, 30, 21, 30, 162)[:i + 1])) for i, d in enumerate(ms)]
+        m = {x["id"]: x for x in build_dashboard({"PAYEMS": pay}, [], date(2026, 9, 28))["dimensions"][0]["metrics"]}
+        self.assertEqual(m["nfp3"]["text"], "71")
+        self.assertEqual(m["nfp3"]["note"], "单月 162 千人（2026-08）")
 
     def test_effr_path(self):
         raw = {"EFFR": [(date(2026, 9, 24), 3.88)],

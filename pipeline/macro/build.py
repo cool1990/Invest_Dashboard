@@ -1,12 +1,13 @@
 """把原始 FRED 序列整理成页面要用的 data/macro/dashboard.json。
 
-页面分四层，JSON 也按这四层组织：
-- verdict：整体环境（增长 × 通胀定象限，货币路径与流动性作条件）+ 分歧与风险。
-- dimensions：五个维度各自按经济锚点判断的状态、一句话、证据、即将发布。
+页面分三层，每层只放别的层没有的东西：
+- 结论：verdict（整体环境两行：增长 × 通胀定象限，货币路径与流动性作条件）
+  和 dimensions 的 label / head（五个维度各一句状态）。
   不用 z 分数：和「2000 年以来平均」比没有经济含义，等权汇总又会把分歧抵消掉。
-- signals：每维 2–6 个核心指标：最新值、较上期、较一年前、下一次发布、规则解读。
-- releases：即将发布、最近发布（实际 vs 预期）、克利夫兰联储通胀 Nowcast。
-- sections + charts：明细图表，core=True 的默认展开，其余折叠。
+- 依据：dimensions 的 metrics（决定那句状态的几个数：最新值、较上期、对照的锚点），
+  sections + charts（这几个数对应的图，core=True 的默认展开，其余折叠），
+  通胀一块另附克利夫兰联储 Nowcast 与实际的对照（releases.nowcast）。
+- 时间：releases 的即将发布（附情景门槛）与最近发布（实际 vs 预期）。
 
 缺数据的序列会被跳过；某张图一条序列都没有，就不输出这张图。
 """
@@ -16,7 +17,6 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
-from typing import Callable
 
 from .. import series as ts
 from ..series import Series
@@ -24,12 +24,7 @@ from . import consensus as cons
 from . import interpret as I
 from .scenario import Scenario
 
-# 日历指标 → 克利夫兰联储 Nowcast 口径（都是同比）
-NOWCAST_OF = {"core_pce_mom": "核心 PCE", "core_pce_yoy": "核心 PCE", "pce_mom": "PCE", "pce_yoy": "PCE",
-              "cpi_mom": "CPI", "cpi_yoy": "CPI", "core_cpi_mom": "核心 CPI", "core_cpi_yoy": "核心 CPI"}
-
 DISPLAY_START = date(1990, 1, 1)
-PCTILE_START = date(2000, 1, 1)  # 历史分位的起点
 RECENT_DAYS = 30
 UPCOMING_DAYS = 10
 
@@ -96,23 +91,23 @@ class Chart:
         return out
 
 
-# 各频率「较上期 / 较一年前」各往回数几个观测。周频和日频单期太吵，「上期」用 4 周前 / 约 1 个月前。
+# 「较上期」往回数几个观测。周频和日频单期太吵，用 4 周前 / 约 1 个月前；
+# 稀疏的手工记录（市场隐含 EFFR、Nowcast）直接比上一次记录。
 FREQ = {
-    "M": (1, "上月", 12),
-    "Q": (1, "上季度", 4),
-    "W": (4, "4 周前", 52),
-    "D": (21, "约 1 个月前", 252),
+    "M": (1, "上月"),
+    "Q": (1, "上季度"),
+    "W": (4, "4 周前"),
+    "D": (21, "约 1 个月前"),
+    "O": (1, "上次记录"),
 }
 
 
 @dataclass
-class Signal:
-    """核心指标。rule 由 interpret.py 提供。
+class Metric:
+    """第二层每维的一个数：只放决定状态那句话的指标。
 
-    cmp：算「较上期 / 较一年前」用的序列，默认就是 data；噪音大的月度流量（非农、零售、环比通胀）
-    用 3 个月均值，并在 cmp_note 里注明，解读也用同一个数，箭头和句子不会互相矛盾。
-    keys：在经济日历里对应的指标（找「下一次发布」和「上次意外」）。
-    nowcast：克利夫兰联储 Nowcast 的口径名（只有同比口径）。
+    id 与 interpret.py 里各维度状态返回的 anchors 对应，锚点文字从那里取，阈值只写一处。
+    data 就是规则用的那个数（非农用 3 个月均值），单月之类的补充放 note。
     """
 
     id: str
@@ -120,18 +115,22 @@ class Signal:
     data: Series
     unit: str
     fmt: str
-    rule: Callable[[I.Ctx], I.Result]
-    chart: str | None = None
     freq: str = "M"
-    cmp: Series | None = None
-    cmp_note: str = ""
-    keys: tuple[str, ...] = ()
-    nowcast: str | None = None
-    extra: dict = field(default_factory=dict)
+    chart: str | None = None
+    note: str = ""
+    model: bool = False  # 模型预测，不进判断
 
 
 def signed(fmt: str) -> str:
     return fmt if "+" in fmt else fmt.replace("{:", "{:+", 1)
+
+
+def period_text(d: date, freq: str) -> str:
+    if freq == "Q":
+        return f"{d.year}Q{(d.month - 1) // 3 + 1}"
+    if freq == "M":
+        return f"{d.year}-{d.month:02d}"
+    return d.isoformat()
 
 
 # ---------------------------------------------------------------------------
@@ -305,20 +304,12 @@ class MacroBuilder:
             )),
         ]
 
-        signals = [
-            Signal("gdpnow", "GDPNow 本季度预测", gdpnow, "%", "{:.1f}", I.gdpnow, chart="gdpnow", freq="Q"),
-            Signal("gdp_qoq", "实际 GDP 季环比年化", gdp_qoq, "%", "{:.1f}", I.gdp_q, chart="gdp_q", freq="Q",
-                   keys=("gdp_qoq",), extra={"gdpnow": gdpnow[-1][1] if gdpnow else None}),
-            Signal("nfp", "非农新增就业", nfp, "千人", "{:,.0f}", I.nfp3, chart="nfp", keys=("nfp",),
-                   cmp=nfp3, cmp_note="按 3 个月均值",
-                   extra={"avg3": nfp3[-1][1] if nfp3 else None,
-                          "avg3_chg": (nfp3[-1][1] - nfp3[-2][1]) if len(nfp3) >= 2 else None}),
-            Signal("unrate", "失业率", unrate, "%", "{:.1f}", I.unrate, chart="unrate", keys=("unrate",),
-                   extra={"sahm": sahm[-1][1] if sahm else None,
-                          "chg12": ts.diff(unrate, 12, "M")[-1][1] if len(unrate) > 12 else None}),
-            Signal("retail_ctrl", "零售控制组环比", ctrl_mom, "%", "{:+.2f}", I.retail_ctrl, chart="retail_yoy",
-                   cmp=ts.rolling(ctrl_mom, 3), cmp_note="按 3 个月均值", keys=("retail_mom",),
-                   extra={"avg3": ts.rolling(ctrl_mom, 3)[-1][1] if len(ctrl_mom) >= 3 else None}),
+        metrics = [
+            Metric("gdp_q", "上季实际 GDP（季环比年化）", gdp_qoq, "%", "{:.1f}", "Q", "gdp_q"),
+            Metric("gdpnow", "GDPNow 本季预测", gdpnow, "%", "{:.1f}", "Q", "gdpnow", model=True),
+            Metric("nfp3", "非农新增就业 3 个月均值", nfp3, "千人", "{:,.0f}", chart="nfp",
+                   note=f"单月 {nfp[-1][1]:,.0f} 千人（{period_text(nfp[-1][0], 'M')}）" if nfp else ""),
+            Metric("unrate", "失业率", unrate, "%", "{:.1f}", chart="unrate"),
         ]
         self.inputs["growth"] = {
             "gdpnow": gdpnow[-1][1] if gdpnow else None, "gdp_q": gdp_qoq[-1][1] if gdp_qoq else None,
@@ -328,7 +319,7 @@ class MacroBuilder:
         }
         self.ctx.update({"nfp": nfp, "unrate": unrate, "gdp_qoq": gdp_qoq})
         state = I.growth_state(self.inputs["growth"])
-        return groups, signals, state
+        return groups, metrics, state
 
     # =====================================================================
     # 通胀：PCE 按贡献拆分
@@ -479,29 +470,26 @@ class MacroBuilder:
                     Line("5y5y 远期", fwd), Line("10 年盈亏平衡", be10), Line("密歇根一年期", mich)]),
             )),
         ]
-        signals = [
-            Signal("core_pce_mom", "核心 PCE 环比", core_mom, "%", "{:.2f}", I.core_mom, chart="core_pce",
-                   keys=("core_pce_mom",), cmp=ts.rolling(core_mom, 3), cmp_note="按 3 个月均值",
-                   extra={"avg3": ts.rolling(core_mom, 3)[-1][1] if len(core_mom) >= 3 else None}),
-            Signal("core_pce_yoy", "核心 PCE 同比", core_yoy, "%", "{:.2f}", I.core_yoy, chart="core_contrib_yoy",
-                   keys=("core_pce_yoy",), nowcast="核心 PCE"),
-            Signal("core_pce_3m", "核心 PCE 3 个月年化", core_3m, "%", "{:.2f}", I.core_3m, chart="core_pce_ann",
-                   extra={"yoy": core_yoy[-1][1] if core_yoy else None}),
-            Signal("supercore", "超级核心 PCE 同比", supercore_yoy, "%", "{:.2f}", I.supercore, chart="supercore",
-                   extra={"m3": supercore_3m[-1][1] if supercore_3m else None}),
-            Signal("core_cpi_mom", "核心 CPI 环比", ccpi_mom, "%", "{:.2f}", I.core_cpi_mom, chart="cpi_mom",
-                   keys=("core_cpi_mom",), cmp=ts.rolling(ccpi_mom, 3), cmp_note="按 3 个月均值",
-                   nowcast="核心 CPI", extra={"avg3": ts.rolling(ccpi_mom, 3)[-1][1] if len(ccpi_mom) >= 3 else None}),
-            Signal("fwd5y5y", "5y5y 远期通胀预期", fwd, "%", "{:.2f}", I.fwd_infl, chart="expect", freq="W"),
+        nc_rows = self._nowcast_rows("核心 PCE")
+        metrics = [
+            Metric("core_yoy", "核心 PCE 同比", core_yoy, "%", "{:.2f}", chart="core_contrib_yoy"),
+            Metric("core_3m", "核心 PCE 3 个月年化", core_3m, "%", "{:.2f}", chart="core_pce_ann"),
+            Metric("supercore", "超级核心 PCE 同比", supercore_yoy, "%", "{:.2f}", chart="supercore",
+                   note="服务除能源、住房，与工资相关"),
+            Metric("fwd", "5y5y 远期通胀预期", fwd, "%", "{:.2f}", "W", "expect"),
         ]
+        if core_yoy and nc_rows and nc_rows[-1][0] > core_yoy[-1][0]:
+            metrics.insert(1, Metric("nowcast", "核心 PCE 同比 Nowcast", nc_rows, "%", "{:.2f}", model=True,
+                                     note="克利夫兰联储模型预测"))
         self.inputs["inflation"] = {
             "core_yoy": core_yoy[-1][1] if core_yoy else None, "core_3m": core_3m[-1][1] if core_3m else None,
             "supercore": supercore_yoy[-1][1] if supercore_yoy else None, "fwd": fwd[-1][1] if fwd else None,
             "nowcast": self.nowcast_after("核心 PCE", core_yoy[-1][0] if core_yoy else None),
+            "core_yoy_period": f"{core_yoy[-1][0].month} 月" if core_yoy else None,
         }
         self.ctx.update({"core_idx": core, "ccpi_idx": ccpi})
         state = I.inflation_state(self.inputs["inflation"])
-        return groups, signals, state
+        return groups, metrics, state
 
     # =====================================================================
     # 流动性
@@ -571,24 +559,20 @@ class MacroBuilder:
             )),
         ]
         gdp = self.s("GDP")
-        res = fr["reserves"]
-        ratio = res[-1][1] / gdp[-1][1] * 100 if res and gdp else None
-        signals = [
-            Signal("reserves", "准备金", res, "十亿美元", "{:,.0f}", I.reserves, chart="reserves_stack",
-                   freq="W", extra={"gdp_ratio": ratio, "chg4": chg["reserves"][-1][1] if chg["reserves"] else None}),
-            Signal("sofr_iorb", "SOFR − IORB", sofr_iorb, "基点", "{:+.0f}", I.sofr_iorb, chart="sofr_iorb",
-                   freq="D", extra={"avg4": sum(v for _, v in sofr_iorb[-20:]) / len(sofr_iorb[-20:])
-                                      if sofr_iorb else None}),
-            Signal("nfci", "金融状况 NFCI", nfci, "指数", "{:.2f}", I.nfci, chart="nfci", freq="W",
-                   extra={"chg13": nfci[-1][1] - nfci[-14][1] if len(nfci) > 13 else None}),
-            Signal("hy", "高收益债利差", self.s("BAMLH0A0HYM2"), "%", "{:.2f}", I.hy, chart="hy", freq="D"),
-        ]
+        ratio = [(d, v / g * 100) for d, v in fr["reserves"] if (g := ts.asof(gdp, d, 200))]
         hy_d = self.s("BAMLH0A0HYM2")
+        metrics = [
+            Metric("sofr_iorb", "SOFR − IORB", sofr_iorb, "基点", "{:+.0f}", "D", "sofr_iorb"),
+            Metric("reserves_ratio", "准备金占 GDP", ratio, "%", "{:.1f}", "W", "reserves_stack",
+                   note=f"准备金 {fr['reserves'][-1][1]:,.0f} 十亿美元" if fr["reserves"] else ""),
+            Metric("nfci", "金融状况 NFCI", nfci, "指数", "{:.2f}", "W", "nfci"),
+            Metric("hy", "高收益债利差", hy_d, "%", "{:.2f}", "D", "hy"),
+        ]
         state = I.liquidity_state({
-            "sofr_iorb": sofr_iorb[-1][1] if sofr_iorb else None, "reserves_ratio": ratio,
+            "sofr_iorb": sofr_iorb[-1][1] if sofr_iorb else None, "reserves_ratio": ratio[-1][1] if ratio else None,
             "nfci": nfci[-1][1] if nfci else None, "hy": hy_d[-1][1] if hy_d else None,
         })
-        return groups, signals, state
+        return groups, metrics, state
 
     # =====================================================================
     # 财政
@@ -619,18 +603,17 @@ class MacroBuilder:
                 Chart("debt", "联邦债务占 GDP", "% GDP", [Line("债务/GDP", debt)]),
             )),
         ]
-        signals = [
-            Signal("deficit", "赤字率（滚动 12 个月）", deficit_pct, "% GDP", "{:.1f}", I.deficit, chart="deficit_pct",
-                   extra={"chg12": deficit_chg[-1][1] if deficit_chg else None}),
-            Signal("interest", "利息支出占 GDP", interest_pct, "% GDP", "{:.2f}", I.interest, chart="interest",
-                   freq="Q"),
+        metrics = [
+            Metric("deficit", "赤字率（滚动 12 个月）", deficit_pct, "% GDP", "{:.1f}", chart="deficit_pct"),
+            Metric("interest", "利息支出占 GDP", interest_pct, "% GDP", "{:.2f}", "Q", "interest"),
+            Metric("debt", "联邦债务占 GDP", debt, "% GDP", "{:.0f}", "Q", "debt"),
         ]
         state = I.fiscal_state({
             "deficit": deficit_pct[-1][1] if deficit_pct else None,
             "deficit_chg12": deficit_chg[-1][1] if deficit_chg else None,
-            "interest": interest_pct[-1][1] if interest_pct else None, "debt": debt[-1][1] if debt else None,
+            "interest": interest_pct[-1][1] if interest_pct else None,
         })
-        return groups, signals, state
+        return groups, metrics, state
 
     # =====================================================================
     # 货币政策
@@ -681,7 +664,6 @@ class MacroBuilder:
         real_policy = ts.combine(lambda a, b: a - b, effr_m, core_yoy)
         two_minus = ts.scale(ts.combine(lambda a, b: a - b, self.m("DGS2"), effr_m), 100)
         t10y2y = self.w("T10Y2Y")
-        t10y3m_d = self.s("T10Y3M")
         t10y3m = self.w("T10Y3M")
         dgs10 = self.w("DGS10")
         real10 = self.w("DFII10")
@@ -722,23 +704,14 @@ class MacroBuilder:
                     Line("10 年期国债", dgs10), Line("10 年期 TIPS 实际利率", real10)]),
             )),
         ]
-        ye = exp_lines[1].data
-        # 最近一次倒挂距今多少个交易日（只看近一年）
-        inv_ago = None
-        recent = t10y3m_d[-252:]
-        for k in range(len(recent) - 1, -1, -1):
-            if recent[k][1] < 0:
-                inv_ago = len(recent) - 1 - k
-                break
-        signals = [
-            Signal("real_policy", "实际政策利率", real_policy, "%", "{:.2f}", I.real_policy, chart="real_policy"),
-            Signal("effr_path", "市场隐含年底 EFFR", ye, "%", "{:.2f}", I.effr_path, chart="effr_path",
-                   freq="D", extra=pv),
-            Signal("curve", "10Y − 3M 利差", t10y3m_d, "百分点", "{:.2f}", I.curve, chart="curve", freq="D",
-                   extra={"inv_days_ago": inv_ago}),
+        metrics = [
+            Metric("real_policy", "实际政策利率", real_policy, "%", "{:.2f}", chart="real_policy",
+                   note="EFFR − 核心 PCE 同比"),
+            Metric("year_end", "市场隐含年底 EFFR", exp_lines[1].data, "%", "{:.2f}", "O", "effr_path"),
+            Metric("next_year", "市场隐含明年底 EFFR", exp_lines[2].data, "%", "{:.2f}", "O", "effr_path"),
         ]
         state = I.policy_state({**pv, "real_policy": real_policy[-1][1] if real_policy else None})
-        return groups, signals, state
+        return groups, metrics, state
 
     # =====================================================================
     # 克利夫兰联储 Nowcast
@@ -810,11 +783,6 @@ class MacroBuilder:
                         sc = self.scen.scenarios(spec.key, ref, cons.parse_value(f_text))
                         if sc:
                             row["scenario"] = sc
-                        measure = NOWCAST_OF.get(spec.key)
-                        if measure:
-                            nc = dict((p, v) for p, v in self._nowcast_rows(measure))
-                            if ref in nc:
-                                row["nowcast_text"] = f"{measure} 同比 Nowcast {nc[ref]:.2f}%"
                     upcoming.append(row)
                 continue
             if not spec or at < now - timedelta(days=RECENT_DAYS):
@@ -874,84 +842,22 @@ class MacroBuilder:
                 out.append((p, float(r["nowcast"])))
         return sorted(out)
 
-    def next_release(self, keys: tuple[str, ...], upcoming: list[dict]) -> dict | None:
-        for r in upcoming:
-            if r.get("key") in keys:
-                return {k: r.get(k) for k in ("bj", "title", "forecast_text", "previous_text", "ref", "nowcast_text")}
-        return None
-
-    def consensus_for(self, key: str, ref: date) -> dict | None:
-        """找同一参考期、发布日最近的一条预期。所有预期记录（含 30 天以前）都查。"""
-        best = None
-        spec_keys = [t for t, sp in cons.EVENTS.items() if sp.key == key]
-        for e in self.events:
-            if e.get("title") not in spec_keys:
-                continue
-            spec = cons.EVENTS[e["title"]]
-            try:
-                at = datetime.fromisoformat(e["release_at"])
-            except ValueError:
-                continue
-            if at > self.now or cons.ref_period(spec, at.date()) != ref:
-                continue
-            if best is None or e["release_at"] > best[0]["release_at"]:
-                best = (e, spec)
-        if not best:
-            return None
-        e, spec = best
-        f = cons.parse_value(e.get("forecast", ""))
-        if f is None:
-            return None
-        actual = self._find(key, ref)
-        dec = self._decimals(e["forecast"])
-        out = {"forecast_text": e["forecast"], "source": "市场一致预期"}
-        if actual is not None:
-            diff, verdict, direction = self.judge(spec, actual, f, dec)
-            out.update({"surprise_text": f"{diff:+,.{dec}f}", "verdict": verdict, "dir": direction})
-        return out
-
     # =====================================================================
-    def signal_json(self, sg: Signal, upcoming: list[dict]) -> dict | None:
-        if not sg.data:
+    def metric_json(self, m: Metric, anchors: dict[str, str]) -> dict | None:
+        if not m.data:
             return None
-        d, v = sg.data[-1]
-        prev = sg.data[-2][1] if len(sg.data) >= 2 else None
-        hist = [x for dd, x in sg.data if dd >= PCTILE_START]
-        pct = ts.percentile_rank(hist, v) if len(hist) >= 24 else None
-        try:
-            text, level = sg.rule(I.Ctx(v, prev, None, pct, sg.extra))
-        except Exception as exc:  # noqa: BLE001 解读失败不影响数字
-            text, level = f"（解读出错：{exc}）", "ok"
-
-        # 较上期 / 较一年前：差值，单位和数值本身一样
-        base = sg.cmp if sg.cmp else sg.data
-        n_short, short_label, n_long = FREQ[sg.freq]
-        sfmt = signed(sg.fmt)
-
-        def change(n: int, label: str) -> dict | None:
-            if len(base) <= n:
-                return None
-            dv = base[-1][1] - base[-1 - n][1]
-            txt = sfmt.format(dv)
+        d, v = m.data[-1]
+        n, label = FREQ[m.freq]
+        chg = None
+        if len(m.data) > n:
+            base = m.data[-1 - n][1]
+            txt = signed(m.fmt).format(v - base)
             flat = float(txt.replace(",", "").replace("+", "")) == 0  # 按显示精度看是否为 0
-            return {"label": label, "text": "持平" if flat else txt, "base": sg.fmt.format(base[-1 - n][1]),
-                    "dir": "flat" if flat else "up" if dv > 0 else "down"}
-
-        long_label = "一年前"
-        cmp = {"short": change(n_short, short_label), "long": change(n_long, long_label), "note": sg.cmp_note,
-               "now": sg.fmt.format(base[-1][1]) if sg.cmp else None}
-
-        nxt = self.next_release(sg.keys, upcoming) if sg.keys else None
-        last = None
-        for k in sg.keys:
-            last = self.consensus_for(k, d)
-            if last:
-                break
-        nowcast = self.nowcast_after(sg.nowcast, d) if sg.nowcast else []
-        return {"id": sg.id, "name": sg.name, "text": sg.fmt.format(v), "unit": sg.unit, "date": d.isoformat(),
-                "cmp": cmp, "pctile": round(pct) if pct is not None else None, "interp": text, "level": level,
-                "chart": sg.chart, "next": nxt, "last_surprise": last,
-                "nowcast": [{"period": p, "value": round(x, 2)} for p, x in nowcast]}
+            chg = {"label": label, "text": "持平" if flat else txt, "base": m.fmt.format(base),
+                   "dir": "flat" if flat else "up" if v > base else "down"}
+        return {"id": m.id, "name": m.name, "text": m.fmt.format(v), "unit": m.unit,
+                "date": period_text(d, m.freq), "chg": chg, "anchor": anchors.get(m.id, ""),
+                "note": m.note, "chart": m.chart if m.chart in self.charts else None, "model": m.model}
 
     def build(self) -> dict:
         dims = [("growth", "增长", self.growth), ("inflation", "通胀", self.inflation),
@@ -961,44 +867,27 @@ class MacroBuilder:
         self.states = {key: st for key, _, _, _, st in built}
         self.scen = Scenario(self)
         releases = self.releases()  # 需要 actuals 和各维度状态，放在各维度之后
-        upcoming = releases["upcoming"]
 
-        out_dims, sections, signals, states = [], [], {}, {}
-        for key, name, groups, sigs, state in built:
-            states[key] = state
-            signals[key] = [x for x in (self.signal_json(sg, upcoming) for sg in sigs) if x]
-            for sj in signals[key]:
-                if sj["chart"] in self.charts:
-                    self.charts[sj["chart"]].setdefault("interp", []).append(
-                        {"name": sj["name"], "text": sj["interp"], "level": sj["level"]})
+        out_dims, sections = [], []
+        for key, name, groups, metrics, state in built:
             out_dims.append({
                 "key": key, "name": name, "label": state["label"], "head": state["head"],
-                "split": state.get("split", False),
-                "points": [{"text": t, "level": lv} for t, lv in state["points"]],
-                "next": [r for r in upcoming if r.get("dim") == key][:3],
+                "metrics": [x for x in (self.metric_json(m, state.get("anchors", {})) for m in metrics) if x],
             })
             sections.append({"key": key, "name": name,
                              "groups": [{"name": g, "charts": ids} for g, ids in groups if ids]})
 
-        env = I.environment(states["growth"], states["inflation"], states["policy"], states["liquidity"])
-        risks = []
-        for dn in out_dims:
-            if dn["split"]:
-                risks.append({"dim": dn["name"], "name": "分歧", "value": "", "unit": "", "text": dn["head"],
-                              "level": "watch"})
-            for sj in sorted(signals[dn["key"]], key=lambda x: I.LEVEL_ORDER[x["level"]]):
-                if sj["level"] != "ok":
-                    risks.append({"dim": dn["name"], "name": sj["name"], "value": sj["text"], "unit": sj["unit"],
-                                  "text": sj["interp"], "level": sj["level"]})
+        st = self.states
+        env = I.environment(st["growth"], st["inflation"], st["policy"], st["liquidity"])
         return {
             "asof": self.asof.isoformat(),
-            "method": "每个维度按经济锚点判断：增长对约 2% 的潜在增速，就业看非农 3 个月均值和 Sahm，"
-                      "通胀对 2% 目标并看短期动能与 Nowcast，流动性分资金市场、金融条件、信用三块，"
-                      "财政分财政脉冲与偿债压力，货币分当前立场与市场路径。整体环境由增长 × 通胀的组合决定。"
-                      "阈值都写在 pipeline/macro/interpret.py，历史分位只作为参考。",
-            "verdict": {"name": env["name"], "headline": env["head"], "sub": env["sub"], "points": risks},
+            "method": "每个维度按经济锚点判断，只用已经公布的数据定状态：增长的产出看上季实际 GDP 对约 2% 的潜在增速"
+                      "（GDPNow 是模型预测，只作参考），就业看非农 3 个月均值、失业率和 Sahm；"
+                      "通胀看核心 PCE 对 2% 目标和 3 个月年化的短期动能，克利夫兰联储 Nowcast 只按它和官方值差多少来措辞；"
+                      "流动性分资金市场、金融条件、信用三块；财政分财政脉冲与偿债压力；货币分当前立场与市场路径。"
+                      "整体环境由增长 × 通胀的组合决定。阈值都写在 pipeline/macro/interpret.py。",
+            "verdict": {"name": env["name"], "headline": env["head"], "sub": env["sub"]},
             "dimensions": out_dims,
-            "signals": signals,
             "releases": releases,
             "sections": sections,
             "charts": self.charts,

@@ -167,7 +167,10 @@ class Scenario:
             has_fc = forecast is not None and sg["start"] - step / 2 <= forecast <= sg["end"] + step / 2
             out.append({"range": rng, "result": "；".join(changes) or "判断不变", "changed": bool(changes),
                         "detail": "，".join(detail), "forecast": has_fc})
-        return {"current": "；".join(f"{k}「{v}」" for k, v in base["fields"]), "segments": out}
+        # 哪些标签在某一段里会变：页面上折叠行的标题
+        affects = [k for k, v in base["fields"] if any(dict(sg["sig"]).get(k) != v for sg in segs)]
+        return {"current": "；".join(f"{k}「{v}」" for k, v in base["fields"]), "segments": out,
+                "affects": affects}
 
     # -- 发布后：前后对比 -----------------------------------------------------
     def impact(self, key: str, ref: date, actual: float) -> dict | None:
