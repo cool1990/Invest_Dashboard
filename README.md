@@ -6,7 +6,7 @@
 |---|---|---|
 | 美国宏观 | `macro.html` | 第一期 |
 | 半导体与 AI | `semis.html` | 第一期 |
-| 加密货币 | — | 规划中 |
+| 加密货币 | `crypto.html` | 第一期 |
 | 个股 | — | 规划中 |
 
 网址：https://cool1990.github.io/Invest_Dashboard/
@@ -91,6 +91,39 @@
 
 **后续**：第二期加台湾外销订单、日本 SEAJ 设备出货、WSTS 全球销售、SOX 相对 S&P 500，拿到 key 后启用 KOSIS；第三期由笔记接入合约价与交期，并照宏观的 `scenario.py` 加情景门槛。
 
+## 加密货币板块
+
+目标：判断**比特币处在周期的哪一段，资金有没有配合，价格有没有确认**。以太坊和山寨只看风险偏好有没有从比特币扩散出去，不单独做一套周期。做法和前两页一样：按锚点判断、不用 z 分数，三层版式。阈值在 `pipeline/crypto/interpret.py`。MVRV Z-Score 和 NUPL 不进判断（NUPL 就是 MVRV 的变形）。
+
+**顶部**：两句不带数字。周期 = 估值 × 持有者，同向才起名字，矛盾写「分化」。资金 = 现货需求 × 杠杆，未平仓明显下降写成「资金出清」，多头费率偏高会把流入改写成「资金拥挤」。再下面一行写价格有没有被 200 日均线确认，以及风险偏好停在比特币还是已经扩散。恐贪指数只作参考，不进这两句。
+
+| 维度 | 标签 | 进判断的数（锚点） |
+|---|---|---|
+| 估值 | 低于成本 / 成本附近 / 盈利扩张 / 过热 | MVRV：< 1 低于全体持有者成本，1–1.4 成本附近，1.4–2.4 盈利扩张，> 2.4 过热（按 ETF 上市以后的顶部，不要求回到 2017 年的 4）。实现价格 = 价格 / MVRV，和 MVRV 低于 1 是同一件事，不另投一票 |
+| 持有者 | 吸筹 / 持有 / 派发 / 投降 | 1 年以上供给 30 天变化（升为吸筹、降为派发）；长线 SOPR 7 日均值（> 1 盈利卖出，< 1 亏损卖出）。投降 = 价格低于短线成本且 SOPR 7 日 < 1。短线、长线成本来自免费接口，大约滞后 7 天，判断用同一天的价格。地址余额分布不进投票 |
+| 杠杆 | 多头拥挤 / 加杠杆 / 中性 / 空头拥挤 / 去杠杆 | 币安 BTCUSDT 永续：8 小时费率的 7 日均值（> 0.03% 为多头拥挤，基准是每 8 小时 0.01%；< 0 为空头付费）；未平仓名义金额 / 市值的 30 天变化（> +15% 加杠杆，< −15% 去杠杆）。去杠杆优先。全账户多空比只作参考。不是全市场 |
+| 现货需求 | 流入 / 平淡 / 流出 | 美国比特币现货 ETF 20 个交易日净流入对照同期新产出（发行量 × 价格）；主要稳定币流通量 30 天（> +2% / < −1%）。单日红绿不改标签。以太坊 ETF 只展示 |
+| 趋势 | 上升趋势 / 趋势中性 / 下降趋势 | 收盘相对 200 日均线 ±5%。只确认周期，不改周期名字 |
+| 广度 | 比特币独强 / 结构稳定 / 扩散 / 分化 | 主导率 30 天 ±1.5 个百分点；以太坊/比特币 30 天超过 ±3% 且方向相反时，这一维自己标分化 |
+| 情绪 | 极度恐惧到极度贪婪 | alternative.me 的原分段。参考，不进顶部 |
+
+周期名字：低于成本 × 投降 = 出清；成本附近 × 持有 = 磨底；盈利扩张 × 吸筹或持有 = 景气上行；过热且还没派发 = 过热；过热 × 派发 = 见顶风险；其余矛盾为分化。
+
+**数据**：
+
+| 来源 | 内容 | 本地文件 |
+|---|---|---|
+| Coin Metrics 社区接口（CC BY-NC，无需 key） | 价格、市值、MVRV、流通量、每日发行量（IssTotNtv，含手续费）。实现市值不在免费目录里，实现价格用价格 / MVRV | `data/raw/crypto/coinmetrics_btc.csv` |
+| BGeometrics 免费层（每天大约 15 次，固定 5 个端点） | 短线/长线实现价格、长线 SOPR、HODL 波段、比特币主导率。部分序列滞后约 7 天 | `data/raw/crypto/bg_*.csv` |
+| 币安公开数据 | BTCUSDT 永续资金费率与未平仓、全账户多空比，以及 BTC、ETH 现货日线。`fapi.binance.com` 在部分网络会 451，改读 `data.binance.vision` 的压缩包，是同一本账。费率月包不含当月，这段用 BGeometrics 补，大约滞后 7 天 | `data/raw/crypto/binance_*.csv` |
+| Farside 全历史页 | 美国比特币、以太坊现货 ETF 每日净流入（百万美元）。最近两三周的页面不够算 20 个交易日。改版时可写 `data/crypto/manual.csv` | `data/raw/crypto/etf_btc.csv`、`etf_eth.csv` |
+| DefiLlama | 稳定币总流通量 | `data/raw/crypto/stable.csv` |
+| alternative.me | 恐贪指数 | `data/raw/crypto/fng.csv` |
+
+右侧不编「即将发布」，只列各来源的最新日期。ETF 要等美股收盘之后才完整。
+
+**后续**：第二期加币安以外的费率和未平仓、Deribit 月度到期、以太坊 ETF 进需求投票，以及宏观页那种「这笔数据会不会改标签」的情景门槛。
+
 ## 数据
 
 - 来源：圣路易斯联储 [FRED](https://fred.stlouisfed.org/) 的公开 CSV，不需要 API key。序列清单在 `pipeline/macro/indicators.py`。
@@ -121,12 +154,14 @@ pipeline/semis/kosis.py       韩国统计局出货与库存（需要 key）
 pipeline/semis/interpret.py   半导体规则：六个维度、象限、领先 vs 同步
 pipeline/semis/importance.py  半导体日历星级
 pipeline/semis/build.py       半导体看板数据
+pipeline/crypto/              加密货币：Coin Metrics、BGeometrics、币安、Farside、稳定币、恐贪，规则在 interpret.py
 scripts/update_macro.py       更新宏观数据（下载 + 生成）
 scripts/update_semis.py       更新半导体数据（下载 + 生成）
+scripts/update_crypto.py      更新加密货币数据（下载 + 生成）
 scripts/build_site.py         构建网页到 dist/
 tests/                        计算测试
-index.html  macro.html  semis.html  页面
-assets/js/board.js            两页共用的三层版式
+index.html  macro.html  semis.html  crypto.html  页面
+assets/js/board.js            各页共用的三层版式
 assets/                       样式、脚本、Chart.js（本地打包，不依赖 CDN）
 ```
 
@@ -135,7 +170,8 @@ assets/                       样式、脚本、Chart.js（本地打包，不依
 ## 自动更新
 
 - `.github/workflows/update-macro.yml`：每天 22:40 UTC（北京时间 06:40）跑测试、下载、生成；数据有变化就提交并发布网页。也可以在 Actions 页面手动运行。
-- `.github/workflows/update-semis.yml`：每天 02:10 UTC（北京时间 10:10，旧站早晨笔记之后）；每月 5–12 日 08:10 UTC 再跑一次接台湾月营收。可选 Secret `KOSIS_API_KEY`。两个更新工作流推送前都先 `git pull --rebase`，写的文件不重叠。
+- `.github/workflows/update-semis.yml`：每天 02:10 UTC（北京时间 10:10，旧站早晨笔记之后）；每月 5–12 日 08:10 UTC 再跑一次接台湾月营收。可选 Secret `KOSIS_API_KEY`。更新工作流推送前都先 `git pull --rebase`，写的文件不重叠。
+- `.github/workflows/update-crypto.yml`：每天 13:40 UTC（北京时间 21:40），等当天的 ETF 净流入出现在 Farside。不需要 Secret。
 - `.github/workflows/pages.yml`：改网页或合并到 `main` 时发布。
 
 首次使用需要在仓库 **Settings → Pages → Build and deployment → Source** 选 **GitHub Actions**。
@@ -149,6 +185,8 @@ python3 scripts/update_macro.py            # 下载并生成（需要能访问 F
 python3 scripts/update_macro.py --offline  # 只用已下载的 CSV 重新生成
 python3 scripts/update_semis.py            # 半导体：下载并生成（需要能访问旧站、FRED、证交所、SEC）
 python3 scripts/update_semis.py --offline
+python3 scripts/update_crypto.py           # 加密货币：下载并生成
+python3 scripts/update_crypto.py --offline
 python3 -m unittest discover -s tests
 python3 scripts/build_site.py && python3 -m http.server 8000 -d dist
 ```
