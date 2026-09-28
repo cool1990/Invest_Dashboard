@@ -4,6 +4,7 @@
 
 let DATA = null;
 let sectionExtra = () => "";
+let sectionAfter = () => "";
 
 const RANGES = [
   { key: "2y", label: "2 年", years: 2 },
@@ -179,6 +180,7 @@ function renderSections() {
       ${nMore ? `<details class="more"><summary>更多图表（${nMore} 张）</summary>
         ${more.map((g) => `<h3 class="group-title">${esc(g.name)}</h3><div class="charts">${g.charts.map((id) => chartCardHTML(DATA.charts[id])).join("")}</div>`).join("")}
       </details>` : ""}
+      ${sectionAfter(s.key)}
     </section>`;
   }).join("");
 

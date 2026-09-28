@@ -47,6 +47,7 @@
   "sentiment": null,
   "calendar": null,
   "margin": null,
-  "concentration": null
+  "concentration": null,
+  "insight": null
  }
 }
