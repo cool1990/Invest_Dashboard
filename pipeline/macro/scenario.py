@@ -2,8 +2,9 @@
 
 做法：把「新一期的值」加到对应序列末尾，用和页面完全相同的规则（interpret.py）
 重新算一遍维度状态和整体环境。
-- 发布前：在一组候选值上逐个试，把结果相同的相邻候选值并成一段，得到
-  「新值落在哪个范围 → 判断变成什么」。
+- 发布前：在一组候选值上逐个试，把结果相同的相邻候选值并成一段，再压成一行：
+  预期落在哪一段、页面上哪个标签会变；只留预期两侧最近的门槛。
+  已经公布过的期间（例如 GDP 终值）只是修订，不写情景。
 - 发布后：去掉这一期（发布前）和加上这一期（发布后）各算一次，比较差别。
 
 只覆盖进了规则的指标：非农、失业率、核心 PCE 环比、核心 CPI 环比、实际 GDP。
@@ -28,7 +29,13 @@ GRID = {
     "core_cpi_mom": (-0.20, 0.80, 0.01, "{:.2f}%"),
     "gdp_qoq": (-3.0, 7.0, 0.1, "{:.1f}%"),
 }
-LEVEL_TEXT = {"alert": "警示", "watch": "关注", "ok": "正常"}
+# 情景试算的序列：新一期的期间已经在里面，说明这次只是修订
+CTX = {"nfp": "nfp", "unrate": "unrate", "gdp_qoq": "gdp_qoq", "core_pce_mom": "core_idx", "core_cpi_mom": "ccpi_idx"}
+
+
+def _num(text: str) -> str:
+    """负号用 −，和页面其他地方一致。"""
+    return text.replace("-", "−")
 
 
 def _mean(xs: list[float]) -> float:
@@ -105,35 +112,25 @@ class Scenario:
         r = self._price("core_idx", ref, x)
         if not r:
             return None
-        idx, m1, avg3, yoy = r
-        lvl = I.core_mom(I.Ctx(m1, extra={"avg3": avg3}))[1]
+        idx, _, avg3, yoy = r
         m3 = ts.pct_change(idx, 3, "M", annualize=12)[-1][1]
         i = I.inflation_state({**self.b.inputs["inflation"], "core_yoy": yoy, "core_3m": m3,
                                "nowcast": self.b.nowcast_after("核心 PCE", idx[-1][0])})
-        return {"fields": [("核心 PCE 环比", LEVEL_TEXT[lvl]), ("通胀", i["label"]),
-                           ("整体环境", self._env(i=i)["name"])],
+        # 只列页面上真有的标签：环比本身没有标签，只看它会不会改通胀和整体环境
+        return {"fields": [("通胀", i["label"]), ("整体环境", self._env(i=i)["name"])],
                 "detail": {"核心 PCE 同比": yoy, "3 个月均值折年": I.ann(avg3)}}
 
-    def _o_core_cpi_mom(self, ref: date, x: float | None) -> dict | None:
-        r = self._price("ccpi_idx", ref, x)
-        if not r:
-            return None
-        _, m1, avg3, yoy = r
-        lvl = I.core_cpi_mom(I.Ctx(m1, extra={"avg3": avg3}))[1]
-        return {"fields": [("核心 CPI 环比", LEVEL_TEXT[lvl])],
-                "detail": {"核心 CPI 同比": yoy, "3 个月均值折年": I.ann(avg3)}}
+    # 核心 CPI 不进任何标签（通胀按核心 PCE 判断），不写情景
 
     # -- 发布前：情景门槛 -----------------------------------------------------
-    def scenarios(self, key: str, ref: date, forecast: float | None) -> dict | None:
-        if key not in GRID:
-            return None
+    def segments(self, key: str, ref: date) -> tuple[dict, list[dict]] | None:
+        """在候选值上逐个试算，把结果相同的相邻候选值并成一段。返回 (现在的结果, 各段)。"""
         base = self.outcome(key, ref, None)
         if base is None:
             return None
-        lo, hi, step, fmt = GRID[key]
-        n = int(round((hi - lo) / step))
+        lo, hi, step, _ = GRID[key]
         segs: list[dict] = []
-        for k in range(n + 1):
+        for k in range(int(round((hi - lo) / step)) + 1):
             x = round(lo + k * step, 6)
             o = self.outcome(key, ref, x)
             if o is None:
@@ -141,35 +138,52 @@ class Scenario:
             sig = tuple(o["fields"])
             if segs and segs[-1]["sig"] == sig:
                 segs[-1]["end"] = x
-                segs[-1]["detail_end"] = o["detail"]
             else:
-                segs.append({"sig": sig, "start": x, "end": x, "detail_start": o["detail"], "detail_end": o["detail"]})
+                segs.append({"sig": sig, "start": x, "end": x})
+        return base, segs
+
+    def scenarios(self, key: str, ref: date, forecast: float | None, forecast_text: str = "") -> dict | None:
+        """一行：预期落在哪、哪个标签会变。例如
+        「预期 98K，就业仍为「降温」；≥ 267K 变为「强」，增长变为「扩张偏强」；≤ −34K 变为「疲弱」」。"""
+        if key not in GRID or ref in dict(self.b.ctx.get(CTX[key], [])):
+            return None  # 已经公布过的期间只是修订
+        r = self.segments(key, ref)
+        if r is None:
+            return None
+        base, segs = r
         base_f = dict(base["fields"])
-        out = []
-        for j, sg in enumerate(segs):
-            if len(segs) == 1:
-                rng = "在常见范围内"
-            elif j == 0:
-                rng = f"≤ {fmt.format(sg['end'])}"
-            elif j == len(segs) - 1:
-                rng = f"≥ {fmt.format(sg['start'])}"
-            else:
-                rng = f"{fmt.format(sg['start'])} ~ {fmt.format(sg['end'])}"
-            changes = [f"{k}变为「{v}」" for k, v in sg["sig"] if base_f.get(k) != v]
-            detail = []
-            for name in sg["detail_start"]:
-                a, b = sg["detail_start"][name], sg["detail_end"][name]
-                if a is None or b is None:
-                    continue
-                f, unit = ("{:,.0f}", " 千人") if "非农" in name else ("{:.2f}", "") if name == "Sahm" else ("{:.2f}", "%")
-                lo_, hi_ = f.format(min(a, b)), f.format(max(a, b))
-                detail.append(f"{name} {lo_}{unit}" if lo_ == hi_ else f"{name} {lo_}–{hi_}{unit}")
-            has_fc = forecast is not None and sg["start"] - step / 2 <= forecast <= sg["end"] + step / 2
-            out.append({"range": rng, "result": "；".join(changes) or "判断不变", "changed": bool(changes),
-                        "detail": "，".join(detail), "forecast": has_fc})
-        # 哪些标签在某一段里会变：页面上折叠行的标题
-        affects = [k for k, v in base["fields"] if any(dict(sg["sig"]).get(k) != v for sg in segs)]
-        return {"current": "；".join(f"{k}「{v}」" for k, v in base["fields"]), "segments": out,
+        affects = [k for k in base_f if any(dict(sg["sig"]).get(k) != base_f[k] for sg in segs)]
+        # 主标签：会变的第一个；都变不了就用第一个
+        main = affects[0] if affects else next(iter(base_f))
+        _, _, step, fmt = GRID[key]
+
+        def changes(sg: dict, name_main: bool = False) -> str:
+            # 门槛那几段紧跟在「主标签仍为…」后面，主标签的名字省掉
+            return "，".join(f"{'' if k == main and not name_main else k}变为「{v}」"
+                            for k, v in sg["sig"] if base_f.get(k) != v)
+
+        fc = None
+        if forecast is not None:
+            fc = next((j for j, sg in enumerate(segs) if sg["start"] - step / 2 <= forecast <= sg["end"] + step / 2), None)
+        fc_txt = forecast_text or (fmt.format(forecast) if forecast is not None else "")
+        if fc is None:
+            head = f"{main}现为「{base_f[main]}」"
+        elif changes(segs[fc]):
+            head = f"预期 {fc_txt}：{changes(segs[fc], name_main=True)}"
+        else:
+            head = f"预期 {fc_txt}，{main}仍为「{base_f[main]}」" + ("" if affects else "，整体环境不变")
+        # 只留预期两侧最近的门槛；没有预期时以现在的结果所在段为准
+        at = fc if fc is not None else next(
+            (j for j, sg in enumerate(segs) if dict(sg["sig"]) == base_f), None)
+        parts = [head]
+        if at is not None:
+            up = next((sg for sg in segs[at + 1:] if changes(sg)), None)
+            down = next((sg for sg in reversed(segs[:at]) if changes(sg)), None)
+            if up:
+                parts.append(f"≥ {_num(fmt.format(up['start']))} {changes(up)}")
+            if down:
+                parts.append(f"≤ {_num(fmt.format(down['end']))} {changes(down)}")
+        return {"text": "；".join(parts), "changed": fc is not None and bool(changes(segs[fc])),
                 "affects": affects}
 
     # -- 发布后：前后对比 -----------------------------------------------------

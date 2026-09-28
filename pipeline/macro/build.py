@@ -815,7 +815,7 @@ class MacroBuilder:
                     if spec:
                         ref = cons.ref_period(spec, at.date())
                         row["ref"] = self._ref_text(spec, ref)
-                        sc = self.scen.scenarios(spec.key, ref, cons.parse_value(f_text))
+                        sc = self.scen.scenarios(spec.key, ref, cons.parse_value(f_text), f_text)
                         if sc:
                             row["scenario"] = sc
                     upcoming.append(row)
