@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>美国宏观 · 投资看板</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">投资看板</a>
+      <nav class="nav" id="nav" aria-label="板块"></nav>
+    </div>
+  </header>
+  <main id="app">
+    <div class="page-head">
+      <div>
+        <h1>美国宏观</h1>
+        <div class="sub">增长 · 通胀 · 流动性 · 财政 · 货币政策 <span class="muted small" id="asof"></span></div>
+      </div>
+    </div>
+
+    <div class="scores" id="scores"></div>
+    <p class="method" id="method"></p>
+
+    <div class="section-nav">
+      <div class="chips" id="chips"></div>
+      <div class="seg" id="range" role="group" aria-label="时间范围"></div>
+    </div>
+    <div id="sections"></div>
+
+    <div class="card health" id="health"></div>
+  </main>
+  <footer>数据来源：圣路易斯联储 FRED（BEA、BLS、美联储、财政部、各地区联储等）；市场隐含 EFFR 来自每日笔记。仅供个人参考。</footer>
+  <script src="assets/vendor/chart.umd.min.js"></script>
+  <script src="assets/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="assets/js/common.js"></script>
+  <script src="assets/js/macro.js"></script>
+</body>
+</html>

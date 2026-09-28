@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>投资看板</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">投资看板</a>
+      <nav class="nav" id="nav" aria-label="板块"></nav>
+    </div>
+  </header>
+  <main>
+    <div class="page-head">
+      <div>
+        <h1>投资看板</h1>
+        <div class="sub">按板块整理的数据与读数。每个板块一页，数据各自独立。</div>
+      </div>
+    </div>
+    <div class="hub">
+      <a class="card" href="macro.html" style="color:inherit;text-decoration:none">
+        <h2>美国宏观</h2>
+        <div class="muted small" id="macro-asof">读取中…</div>
+        <div class="hub-dims" id="macro-dims"></div>
+      </a>
+      <div class="card off"><h2>半导体与 AI</h2><div class="muted small">规划中</div></div>
+      <div class="card off"><h2>加密货币</h2><div class="muted small">规划中</div></div>
+      <div class="card off"><h2>个股</h2><div class="muted small">规划中</div></div>
+    </div>
+  </main>
+  <script src="assets/js/common.js"></script>
+  <script>
+    renderNav("index.html");
+    loadJSON("data/macro/dashboard.json").then((d) => {
+      document.getElementById("macro-asof").textContent = "数据更新于 " + (d.status?.updated_at || d.asof).replace("T", " ").replace("Z", " UTC");
+      document.getElementById("macro-dims").innerHTML = d.dimensions.map((x) =>
+        `<span>${esc(x.name)}</span><span class="muted">${esc(x.label)}</span><span>${x.score === null ? "—" : fmtSigned(x.score)}</span>`).join("");
+    }).catch(() => { document.getElementById("macro-asof").textContent = "数据还没生成"; });
+  </script>
+</body>
+</html>
