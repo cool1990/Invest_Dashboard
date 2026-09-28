@@ -1,36 +1,77 @@
 {
- "updated_at": "2026-09-28T10:02:10Z",
+ "updated_at": "2026-09-28T11:00:59Z",
  "series": {
   "A34SNO": {
+   "ok": true,
+   "first_obs": "1992-02-01",
+   "last_obs": "2026-08-01",
+   "fetched_at": "2026-09-28T10:54:35Z",
+   "last_ok_at": "2026-09-28T10:54:35Z",
    "name": "美国新订单：计算机与电子产品",
    "unit": "百万美元",
    "freq": "M"
   },
   "A34STI": {
+   "ok": true,
+   "first_obs": "1992-01-01",
+   "last_obs": "2026-08-01",
+   "fetched_at": "2026-09-28T10:54:35Z",
+   "last_ok_at": "2026-09-28T10:54:35Z",
    "name": "美国库存：计算机与电子产品",
    "unit": "百万美元",
    "freq": "M"
   },
   "A34SVS": {
+   "ok": true,
+   "first_obs": "1992-01-01",
+   "last_obs": "2026-08-01",
+   "fetched_at": "2026-09-28T10:54:35Z",
+   "last_ok_at": "2026-09-28T10:54:35Z",
    "name": "美国出货：计算机与电子产品",
    "unit": "百万美元",
    "freq": "M"
   },
   "CAPUTLG3344S": {
+   "ok": true,
+   "first_obs": "1972-01-01",
+   "last_obs": "2026-08-01",
+   "fetched_at": "2026-09-28T10:54:35Z",
+   "last_ok_at": "2026-09-28T10:54:35Z",
    "name": "美国产能利用率：半导体及其他电子元件",
    "unit": "%",
    "freq": "M"
   },
   "IPG3344S": {
+   "ok": true,
+   "first_obs": "1972-01-01",
+   "last_obs": "2026-08-01",
+   "fetched_at": "2026-09-28T10:54:35Z",
+   "last_ok_at": "2026-09-28T10:54:35Z",
    "name": "美国工业产出：半导体及其他电子元件",
    "unit": "指数 2017=100",
    "freq": "M"
   },
   "PCU33443344": {
+   "ok": true,
+   "first_obs": "1984-12-01",
+   "last_obs": "2026-08-01",
+   "fetched_at": "2026-09-28T10:54:35Z",
+   "last_ok_at": "2026-09-28T10:54:35Z",
    "name": "PPI：半导体及其他电子元件",
    "unit": "指数",
    "freq": "M"
   }
  },
- "errors": {}
+ "errors": {
+  "memory": null,
+  "gpu": null,
+  "openrouter": null,
+  "silicon": null,
+  "korea": null,
+  "eps": null,
+  "calendar": null,
+  "twse": null,
+  "sec": "MSFT：HTTP Error 403: Forbidden；GOOGL：HTTP Error 403: Forbidden；AMZN：HTTP Error 403: Forbidden；META：HTTP Error 403: Forbidden；ORCL：HTTP Error 403: Forbidden；NVDA：HTTP Error 403: Forbidden；AMD：HTTP Error 403: Forbidden；AVGO：HTTP Error 403: Forbidden；MU：HTTP Error 403: Forbidden；TXN：HTTP Error 403: Forbidden；MCHP：HTTP Error 403: Forbidden；ADI：HTTP Error 403: Forbidden；AMAT：HTTP Error 403: Forbidden；LRCX：HTTP Error 403: Forbidden；KLAC：HTTP Error 403: Forbidden",
+  "kosis": "未接入（没有 KOSIS_API_KEY）"
+ }
 }
