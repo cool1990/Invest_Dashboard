@@ -226,6 +226,8 @@ class BuildTest(unittest.TestCase):
         self.assertIn("2026-09 前 20 日", segs["memory"]["leading"][1]["value"])
         self.assertNotIn("数据不足", [x["state"] for x in segs.values()])
         # 公司：季报有同比、环比、毛利率和上期；台湾月营收没有毛利率
+        self.assertEqual(segs["memory"]["basis"], "")  # 存储的主指标就是美光那一行，不重复
+        self.assertTrue(segs["equip"]["basis"].startswith("三家合计营收同比"))
         mu = segs["memory"]["companies"][0]
         self.assertEqual((mu["name"], mu["freq"], mu["period"]), ("美光", "Q", "2026Q2"))
         self.assertAlmostEqual(mu["yoy"], (1.01 ** 4 - 1) * 100)

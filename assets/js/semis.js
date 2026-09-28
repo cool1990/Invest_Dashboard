@@ -58,7 +58,7 @@ function renderSegments() {
     const table = rows ? `<div class="table-wrap"><table class="data co"><tr><th>公司 · 期间</th><th>营收同比</th><th>环比</th><th>毛利率</th></tr>${rows}</table></div>` : "";
     return `<div class="sg-block">
       <div class="sg-head"><span class="sg-name">${esc(x.name)}</span><span class="sg-state ${cls(x.state)}">${esc(x.state)}</span>
-        <span class="small muted">${esc(x.basis || "")}</span></div>
+        ${x.basis ? `<span class="small muted">依据 ${esc(x.basis)}</span>` : ""}</div>
       <div class="small muted sg-what">${esc(x.what)}</div>
       ${lead}${table}
     </div>`;
