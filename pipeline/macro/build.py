@@ -22,6 +22,7 @@ from .. import series as ts
 from ..series import Series
 from . import consensus as cons
 from . import interpret as I
+from .scenario import Scenario
 
 # 日历指标 → 克利夫兰联储 Nowcast 口径（都是同比）
 NOWCAST_OF = {"core_pce_mom": "核心 PCE", "core_pce_yoy": "核心 PCE", "pce_mom": "PCE", "pce_yoy": "PCE",
@@ -148,6 +149,10 @@ class MacroBuilder:
         self.now = now or datetime.combine(self.asof, datetime.min.time(), tzinfo=timezone.utc)
         self.charts: dict[str, dict] = {}
         self.actuals: dict[str, Series] = {}  # 日历指标 key → FRED 实际值（与预期同单位）
+        # 情景试算要用：各维度状态函数的输入、状态本身、以及几条原始序列
+        self.inputs: dict[str, dict] = {}
+        self.states: dict[str, dict] = {}
+        self.ctx: dict[str, Series] = {}
 
     # -- 取数 ---------------------------------------------------------------
     def s(self, sid: str) -> Series:
@@ -315,12 +320,14 @@ class MacroBuilder:
                    cmp=ts.rolling(ctrl_mom, 3), cmp_note="按 3 个月均值", keys=("retail_mom",),
                    extra={"avg3": ts.rolling(ctrl_mom, 3)[-1][1] if len(ctrl_mom) >= 3 else None}),
         ]
-        state = I.growth_state({
+        self.inputs["growth"] = {
             "gdpnow": gdpnow[-1][1] if gdpnow else None, "gdp_q": gdp_qoq[-1][1] if gdp_qoq else None,
             "nfp3": nfp3[-1][1] if nfp3 else None, "nfp3_ago": nfp3[-2][1] if len(nfp3) >= 2 else None,
             "unrate_chg12": ts.diff(unrate, 12, "M")[-1][1] if len(unrate) > 12 else None,
             "sahm": sahm[-1][1] if sahm else None,
-        })
+        }
+        self.ctx.update({"nfp": nfp, "unrate": unrate, "gdp_qoq": gdp_qoq})
+        state = I.growth_state(self.inputs["growth"])
         return groups, signals, state
 
     # =====================================================================
@@ -487,11 +494,13 @@ class MacroBuilder:
                    nowcast="核心 CPI", extra={"avg3": ts.rolling(ccpi_mom, 3)[-1][1] if len(ccpi_mom) >= 3 else None}),
             Signal("fwd5y5y", "5y5y 远期通胀预期", fwd, "%", "{:.2f}", I.fwd_infl, chart="expect", freq="W"),
         ]
-        state = I.inflation_state({
+        self.inputs["inflation"] = {
             "core_yoy": core_yoy[-1][1] if core_yoy else None, "core_3m": core_3m[-1][1] if core_3m else None,
             "supercore": supercore_yoy[-1][1] if supercore_yoy else None, "fwd": fwd[-1][1] if fwd else None,
             "nowcast": self.nowcast_after("核心 PCE", core_yoy[-1][0] if core_yoy else None),
-        })
+        }
+        self.ctx.update({"core_idx": core, "ccpi_idx": ccpi})
+        state = I.inflation_state(self.inputs["inflation"])
         return groups, signals, state
 
     # =====================================================================
@@ -798,6 +807,9 @@ class MacroBuilder:
                     if spec:
                         ref = cons.ref_period(spec, at.date())
                         row["ref"] = self._ref_text(spec, ref)
+                        sc = self.scen.scenarios(spec.key, ref, cons.parse_value(f_text))
+                        if sc:
+                            row["scenario"] = sc
                         measure = NOWCAST_OF.get(spec.key)
                         if measure:
                             nc = dict((p, v) for p, v in self._nowcast_rows(measure))
@@ -821,6 +833,10 @@ class MacroBuilder:
                     diff, verdict, direction = self.judge(spec, actual, forecast, dec)
                     row.update({"surprise": diff, "surprise_text": f"{diff:+,.{dec}f}", "verdict": verdict,
                                 "dir": direction})
+                imp = self.scen.impact(spec.key, ref, actual)
+                if imp:
+                    row["impact"] = imp
+            row["market"] = self.market_reaction(at.date())
             recent.append(row)
         recent.sort(key=lambda r: r["release_at"], reverse=True)
         upcoming.sort(key=lambda r: r["release_at"])
@@ -834,6 +850,21 @@ class MacroBuilder:
                 nowcast.append({"measure": measure, "period": r["period"], "nowcast": r.get("nowcast", ""),
                                 "actual": r.get("actual", "")})
         return {"recent": recent, "upcoming": upcoming, "nowcast": nowcast}
+
+    def market_reaction(self, day: date) -> str:
+        """发布当天 2 年期国债的日变化，以及早晨笔记里年底 EFFR 隐含值在发布前后的变化。"""
+        bits = []
+        y2 = self.s("DGS2")
+        on = [v for d, v in y2 if d == day]
+        before = [v for d, v in y2 if d < day]
+        if on and before:
+            bits.append(f"2Y {(on[0] - before[-1]) * 100:+.0f}bp")
+        ye = sorted((r["date"], float(r["value"])) for r in self.effr_expect if r.get("series_id") == "effr_year")
+        pre = [v for d, v in ye if d <= day.isoformat()]
+        post = [v for d, v in ye if d > day.isoformat()]
+        if pre and post:
+            bits.append(f"年底 EFFR 隐含 {(post[0] - pre[-1]) * 100:+.0f}bp")
+        return "；".join(bits)
 
     def _nowcast_rows(self, measure: str) -> list[tuple[date, float]]:
         out = []
@@ -927,7 +958,9 @@ class MacroBuilder:
                 ("liquidity", "流动性", self.liquidity), ("fiscal", "财政", self.fiscal),
                 ("policy", "货币政策", self.policy)]
         built = [(key, name, *fn()) for key, name, fn in dims]
-        releases = self.releases()  # 需要 actuals，放在各维度之后
+        self.states = {key: st for key, _, _, _, st in built}
+        self.scen = Scenario(self)
+        releases = self.releases()  # 需要 actuals 和各维度状态，放在各维度之后
         upcoming = releases["upcoming"]
 
         out_dims, sections, signals, states = [], [], {}, {}

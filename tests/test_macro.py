@@ -160,6 +160,8 @@ class ConsensusTest(unittest.TestCase):
         self.assertEqual(cons.ref_period(E["Core PCE Price Index m/m"], date(2026, 9, 26)), date(2026, 8, 1))
         self.assertEqual(cons.ref_period(E["JOLTS Job Openings"], date(2026, 9, 30)), date(2026, 8, 1))
         self.assertEqual(cons.ref_period(E["Final GDP q/q"], date(2026, 12, 22)), date(2026, 7, 1))
+        self.assertEqual(cons.ref_period(E["Final GDP q/q"], date(2026, 9, 30)), date(2026, 4, 1))
+        self.assertEqual(cons.ref_period(E["Advance GDP q/q"], date(2026, 10, 29)), date(2026, 7, 1))
         self.assertEqual(cons.ref_period(E["Unemployment Claims"], date(2026, 10, 1)), date(2026, 9, 26))
 
     def test_merge_keeps_prerelease_forecast(self):
@@ -213,6 +215,59 @@ class ConsensusTest(unittest.TestCase):
         self.assertEqual(sig["core_pce_mom"]["next"]["forecast_text"], "0.3%")
         self.assertEqual([n["period"] for n in sig["core_pce_yoy"]["nowcast"]], ["8 月", "9 月"])
         self.assertEqual(dash["dimensions"][1]["next"][0]["title"], "核心 PCE 环比")
+
+
+class ScenarioTest(unittest.TestCase):
+    """情景门槛要和规则一致：非农 3 个月均值跨过 50 / 150 千人时判断改变。"""
+
+    def setUp(self):
+        from datetime import datetime, timezone
+        ms = months(date(2024, 1, 1), 32)  # 到 2026-08
+        pay, level = [], 1000.0
+        for i, d in enumerate(ms):
+            level += {len(ms) - 2: 21, len(ms) - 1: 162}.get(i, 30)
+            pay.append((d, level))
+        self.raw = {"PAYEMS": pay, "UNRATE": [(d, 4.1) for d in ms], "GDPC1": [], "GDPNOW": [(date(2026, 7, 1), 5.0)],
+                    "PCEPILFE": [(d, 100 * 1.0028 ** i) for i, d in enumerate(ms)]}
+        self.events = [
+            {"release_at": "2026-10-02T08:30:00-04:00", "title": "Non-Farm Employment Change", "impact": "High",
+             "forecast": "98K", "previous": "162K"},
+            {"release_at": "2026-09-30T08:30:00-04:00", "title": "Core PCE Price Index m/m", "impact": "High",
+             "forecast": "0.3%", "previous": "0.2%"},
+        ]
+        self.now = datetime(2026, 9, 28, tzinfo=timezone.utc)
+
+    def test_nfp_thresholds(self):
+        dash = build_dashboard(self.raw, [], date(2026, 9, 28), self.events, [], self.now)
+        up = {r["key"]: r for r in dash["releases"]["upcoming"]}
+        segs = up["nfp"]["scenario"]["segments"]
+        # 新 3 个月均值 = (21 + 162 + X) / 3：X ≥ 267 时 ≥ 150（强），X ≤ −34 时 < 50（疲弱），
+        # X ≤ −184 时 < 0（恶化）
+        self.assertEqual([g["range"] for g in segs], ["≤ -184K", "-183K ~ -34K", "-33K ~ 266K", "≥ 267K"])
+        self.assertTrue(segs[2]["forecast"])
+        self.assertIn("就业变为「强」", segs[3]["result"])
+        self.assertIn("就业变为「疲弱」", segs[1]["result"])
+        self.assertIn("就业变为「恶化」", segs[0]["result"])
+
+    def test_core_pce_levels(self):
+        dash = build_dashboard(self.raw, [], date(2026, 9, 28), self.events, [], self.now)
+        up = {r["key"]: r for r in dash["releases"]["upcoming"]}
+        segs = up["core_pce_mom"]["scenario"]["segments"]
+        fc = [g for g in segs if g["forecast"]]
+        self.assertEqual(len(fc), 1)
+        # 每月 0.28% 已是折年 3.4%：0.3% 的预期维持「警示」
+        self.assertEqual(fc[0]["result"], "判断不变")
+
+    def test_impact_after_release(self):
+        from datetime import datetime, timezone
+        raw = dict(self.raw)
+        pay = list(raw["PAYEMS"]) + [(date(2026, 9, 1), raw["PAYEMS"][-1][1] + 300)]
+        raw["PAYEMS"] = pay
+        dash = build_dashboard(raw, [], date(2026, 10, 3), self.events, [], datetime(2026, 10, 3, tzinfo=timezone.utc))
+        rec = {r["title_en"]: r for r in dash["releases"]["recent"]}
+        imp = rec["Non-Farm Employment Change"]["impact"]
+        self.assertTrue(imp["changed"])
+        self.assertIn("就业：「降温」→「强」", imp["text"])
 
 
 class InterpretTest(unittest.TestCase):

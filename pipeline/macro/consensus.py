@@ -33,7 +33,8 @@ BJ = timezone(timedelta(hours=8))
 class EventSpec:
     """日历标题 → 本站指标。
 
-    ref: 参考期怎么从发布日推：("M", 天数) 表示「发布日往前推若干天所在的月份」，
+    ref: 参考期怎么从发布日推：("M", 天数) 表示「发布日往前推若干天所在的月份」。
+    GDP 用 95 天：初值（季后第一个月末）到终值（季后第三个月末）都能落回正确的季度。
     ("Q", 天数) 同理取季度，("W", 天数) 表示发布日往前推若干天那一天（周频）。
     up: 数值高于预期意味着什么（"强" / "弱" / "热" / "冷"）。
     """
@@ -59,9 +60,9 @@ EVENTS: dict[str, EventSpec] = {
     "PCE Price Index y/y": EventSpec("pce_yoy", "PCE 同比", "%", ("M", 35), "热"),
     "Retail Sales m/m": EventSpec("retail_mom", "零售销售环比", "%", ("M", 20), "强"),
     "Core Retail Sales m/m": EventSpec("retail_exauto_mom", "零售销售除汽车环比", "%", ("M", 20), "强"),
-    "Advance GDP q/q": EventSpec("gdp_qoq", "实际 GDP 季环比年化（初值）", "%", ("Q", 85), "强"),
-    "Prelim GDP q/q": EventSpec("gdp_qoq", "实际 GDP 季环比年化（修正值）", "%", ("Q", 85), "强"),
-    "Final GDP q/q": EventSpec("gdp_qoq", "实际 GDP 季环比年化（终值）", "%", ("Q", 85), "强"),
+    "Advance GDP q/q": EventSpec("gdp_qoq", "实际 GDP 季环比年化（初值）", "%", ("Q", 95), "强"),
+    "Prelim GDP q/q": EventSpec("gdp_qoq", "实际 GDP 季环比年化（修正值）", "%", ("Q", 95), "强"),
+    "Final GDP q/q": EventSpec("gdp_qoq", "实际 GDP 季环比年化（终值）", "%", ("Q", 95), "强"),
     "JOLTS Job Openings": EventSpec("jolts", "职位空缺", "千个", ("M", 40), "强"),
     "Unemployment Claims": EventSpec("icsa", "初请失业金", "千人", ("W", 5), "弱"),
     "Durable Goods Orders m/m": EventSpec("dgo_mom", "耐用品订单环比", "%", ("M", 30), "强"),

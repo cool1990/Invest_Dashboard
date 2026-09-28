@@ -67,6 +67,19 @@ function renderVerdict() {
     <div class="small muted" style="margin-top:10px">由固定规则按经济锚点判断（阈值见各指标说明），仅供参考，不构成投资建议。</div>`;
 }
 
+// ---- 判断变化日志 ----
+function renderStateLog() {
+  const rows = DATA.state_log || [];
+  const el = document.getElementById("statelog");
+  const changes = rows.filter((r) => r.from);
+  const first = rows.length && !changes.length;
+  el.innerHTML = `<div class="v-label">判断变化日志（近 30 天）</div>
+    ${changes.length ? `<ul class="log">${changes.map((r) => `<li><span class="muted">${esc(r.date)}</span>
+        <span><b>${esc(r.name)}</b>：${esc(r.from)} → <b>${esc(r.to)}</b></span>
+        <span class="small muted">${esc(r.trigger || "当天没有匹配到发布，可能是数据修订或市场变量变化")}</span></li>`).join("")}</ul>`
+      : `<p class="small muted">${first ? `从 ${esc(rows[rows.length - 1].date)} 开始记录，之后任一维度或整体环境的状态变化都会列在这里，并注明当时发布了什么数据。` : "暂无记录。"}</p>`}`;
+}
+
 // ---- 五维状态 ----
 function renderStates() {
   document.getElementById("states").innerHTML = DATA.dimensions.map((d) => `
@@ -85,10 +98,16 @@ const DIM_NAME = { growth: "增长", inflation: "通胀", liquidity: "流动性"
 function renderUpcoming() {
   const r = DATA.releases || { upcoming: [] };
   const st = DATA.status || {};
-  const rows = r.upcoming.map((x) => `<tr>
+  const scen = (sc) => `<tr class="scen"><td></td><td colspan="5" style="text-align:left">
+      <div class="small muted">现在：${esc(sc.current)}</div>
+      <ul class="scen-list">${sc.segments.map((g) => `<li class="${g.changed ? "chg" : ""}${g.forecast ? " fc" : ""}">
+        <span class="scen-rng">新值 ${esc(g.range)}</span>
+        <span>${g.changed ? "<b>" + esc(g.result) + "</b>" : esc(g.result)}${g.detail ? `<span class="small muted">（${esc(g.detail)}）</span>` : ""}${g.forecast ? ' <span class="fc-tag">← 预期在这里</span>' : ""}</span>
+      </li>`).join("")}</ul></td></tr>`;
+  const rows = r.upcoming.map((x) => `<tr class="${x.scenario ? "has-scen" : ""}">
       <td>${esc(x.bj)}</td><td style="text-align:left">${esc(x.title)}${x.impact === "High" ? ' <span class="small muted">高影响</span>' : ""}<div class="small muted">${esc(x.ref || "")}</div></td>
       <td>${esc(DIM_NAME[x.dim] || "—")}</td><td><b>${esc(x.forecast_text || "—")}</b></td><td>${esc(x.previous_text || "—")}</td>
-      <td style="text-align:left" class="small">${esc(x.nowcast_text || "")}</td></tr>`).join("");
+      <td style="text-align:left" class="small">${esc(x.nowcast_text || "")}</td></tr>${x.scenario ? scen(x.scenario) : ""}`).join("");
   document.getElementById("upcoming").innerHTML = rows
     ? `<div class="table-wrap"><table class="data"><tr><th>北京时间</th><th style="text-align:left">指标</th><th>影响</th><th>预期</th><th>前值</th><th style="text-align:left">模型预测</th></tr>${rows}</table></div>`
     : `<p class="small muted">${esc(st.calendar_error ? `日历这次没取到：${st.calendar_error}` : "未来几天没有重要发布。")}</p>`;
@@ -134,14 +153,16 @@ function renderReleases() {
       <td>${esc(x.bj)}</td><td style="text-align:left">${esc(x.title)}<div class="small muted">${esc(x.ref || "")}</div></td>
       <td><b>${esc(x.actual_text ?? "—")}</b></td><td>${esc(x.forecast_text || "—")}</td>
       <td>${x.verdict ? `${x.dir === "pos" ? "↑" : x.dir === "neg" ? "↓" : "="} ${esc(x.verdict)}<div class="small muted">${esc(x.surprise_text)}</div>` : `<span class="muted">${esc(x.status || "无预期")}</span>`}</td>
-      <td>${esc(x.previous_text || "—")}</td></tr>`).join("");
+      <td>${esc(x.previous_text || "—")}</td>
+      <td style="text-align:left" class="small">${x.impact ? (x.impact.changed ? "<b>" + esc(x.impact.text) + "</b>" : esc(x.impact.text)) : '<span class="muted">—</span>'}</td>
+      <td class="small">${esc(x.market || "—")}</td></tr>`).join("");
   const ncRows = r.nowcast.map((x) => `<tr><td style="text-align:left">${esc(x.measure)}</td><td>${esc(x.period)}</td>
       <td>${x.nowcast === "" ? "—" : fmtNum(+x.nowcast)}</td><td>${x.actual === "" ? "—" : fmtNum(+x.actual)}</td></tr>`).join("");
   const empty = (msg) => `<p class="small muted">${esc(msg)}</p>`;
   document.getElementById("releases").innerHTML = `
     <div class="card rel">
-      <p class="small muted">近 30 天。实际值取 FRED 当前值（可能已修订），与发布前最后一次看到的市场一致预期比较。↑ 表示偏强或偏热。</p>
-      ${recentRows ? `<div class="table-wrap"><table class="data"><tr><th>北京时间</th><th style="text-align:left">指标</th><th>实际</th><th>预期</th><th>判断</th><th>前值</th></tr>${recentRows}</table></div>`
+      <p class="small muted">近 30 天。实际值取 FRED 当前值（可能已修订），与发布前最后一次看到的市场一致预期比较，↑ 表示偏强或偏热。「对判断的影响」是去掉这一期和加上这一期各按规则算一次的差别；「市场反应」是发布当天 2 年期国债的变化和年底 EFFR 隐含值在发布前后的变化。</p>
+      ${recentRows ? `<div class="table-wrap"><table class="data"><tr><th>北京时间</th><th style="text-align:left">指标</th><th>实际</th><th>预期</th><th>意外</th><th>前值</th><th style="text-align:left">对判断的影响</th><th>市场反应</th></tr>${recentRows}</table></div>`
         : empty("预期从 2026-09-28 开始累积，9/29 起的发布会陆续出现在这里。")}
     </div>
     <div class="card rel">
@@ -269,6 +290,7 @@ async function main() {
   }
   document.getElementById("asof").textContent = `数据更新于 ${(DATA.status?.updated_at || DATA.asof).replace("T", " ").replace("Z", " UTC")}`;
   renderVerdict();
+  renderStateLog();
   renderStates();
   renderUpcoming();
   renderSignals();

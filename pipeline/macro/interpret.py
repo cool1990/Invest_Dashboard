@@ -352,7 +352,8 @@ def growth_state(v: dict) -> dict:
     if u12 is not None or sahm is not None:
         pts.append((f"失业率较一年前 {_f(u12, '{:+.1f}')} 个百分点，Sahm {_f(sahm, '{:.2f}')}（0.5 触发）",
                     "alert" if sahm is not None and sahm >= 0.5 else "ok"))
-    return {"label": label, "head": head, "points": pts, "level": level, "split": split}
+    return {"label": label, "head": head, "points": pts, "level": level, "split": split,
+            "output": o_txt, "labor": l_txt}
 
 
 def inflation_state(v: dict) -> dict:

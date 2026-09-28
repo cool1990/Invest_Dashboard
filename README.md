@@ -36,6 +36,11 @@
 
 规则和阈值都在 `pipeline/macro/interpret.py`，结果可复现。历史分位只作为参考。
 
+**新数据怎么影响判断**（`pipeline/macro/scenario.py`）：
+- 发布前：对进了规则的指标（非农、失业率、核心 PCE 环比、核心 CPI 环比、实际 GDP），把候选新值逐个加到序列末尾，用和页面相同的规则重算维度状态和整体环境，把结果相同的候选值并成一段，列在「即将发布」该行下面，并标出预期落在哪一段。
+- 发布后：「最近发布」里对每条数据去掉这一期、加上这一期各算一次，写出判断有没有变、怎么变；附发布当天 2 年期国债的变化和年底 EFFR 隐含值在发布前后的变化。
+- 判断变化日志：每次运行比较五个维度和整体环境的状态标签，有变化就追加到 `data/macro/state_log.csv`，并记下前 3 天的相关发布。只比较标签不比较句子，因为句子里的数字几乎每天都变。
+
 **预期值**：
 - 市场一致预期：每天读 ForexFactory 公开的本周、下周日历 JSON（非官方接口，免费），只留美国高、中影响条目，累积到 `data/macro/consensus.csv`。发布前多次看到同一条目时取最后一次的预期。实际值取 FRED 当前值（可能已修订），按参考期（例如 10 月初公布的非农对应 9 月）对齐。需要手工补录时写 `data/macro/consensus_manual.csv`，列相同。
 - 模型预测：GDPNow（对比实际 GDP）、克利夫兰联储通胀 Nowcast（CPI、核心 CPI、PCE、核心 PCE 同比），存 `data/macro/nowcast.csv`。
@@ -70,7 +75,8 @@ pipeline/macro/indicators.py  宏观序列清单
 pipeline/macro/build.py       派生计算、图表、关键读数、评分
 pipeline/macro/effr_expect.py 市场隐含 EFFR
 pipeline/macro/consensus.py   市场一致预期（经济日历）与克利夫兰联储 Nowcast
-pipeline/macro/interpret.py   规则解读与总判断
+pipeline/macro/interpret.py   规则解读、维度状态与整体环境
+pipeline/macro/scenario.py    新数据的情景门槛与发布前后对比
 scripts/update_macro.py       更新宏观数据（下载 + 生成）
 scripts/build_site.py         构建网页到 dist/
 tests/                        计算测试
