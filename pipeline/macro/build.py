@@ -301,7 +301,7 @@ class MacroBuilder:
             Kpi("新屋开工", houst, "千套", "{:,.0f}"),
         ]
         comps = [
-            Component("实际 GDP 同比", ts.to_monthly(gdp_yoy), +1, 200),
+            Component("实际 GDP 同比", ts.to_monthly(gdp_yoy), +1, 280),
             Component("非农 3 个月均值", nfp3, +1),
             Component("失业率 12 个月变化", ts.diff(unrate, 12, "M"), -1),
             Component("初请同比", ts.pct_change(ts.to_monthly(self.s("ICSA")), 12, "M"), -1),
@@ -315,45 +315,60 @@ class MacroBuilder:
     # =====================================================================
     # 通胀
     def pce_contributions(self) -> tuple[list[Line], list[Line]]:
-        """按贡献拆分 PCE 价格。
+        """按贡献拆分 PCE 价格：食品 / 能源 / 住房 / 核心除住房。
 
-        第 i 项对总体的贡献 ≈ 上一期（或 12 个月前）的名义支出份额 × 该项价格变化。
-        链式加总不严格可加，误差通常在 0.01 个百分点量级。
-        能源分成能源商品（汽油等）与能源服务（电、燃气），分别从商品和服务中扣出。
+        某项贡献 ≈ 上一期（同比用 12 个月前）的名义支出份额 × 该项价格变化。
+        食品、能源、核心三块都有月度名义支出，三者之和就是 PCE 总额。
+        核心再拆：核心除住房（IA001176M）的份额 = 核心份额 × (1 − 住房占核心的比重)，
+        住房比重用基期上一年的年度名义住房支出 / 年度核心支出（FRED 没有月度住房支出，
+        也没有月度住房价格）；住房贡献 = 核心贡献 − 核心除住房贡献。
+        链式加总不严格可加，误差一般在 0.01 个百分点量级。
         """
         total_n = self.m("PCE", "last")
-        pairs = {
-            "goods": ("DGDSRG3M086SBEA", "DGDSRC1"),
-            "services": ("DSERRG3M086SBEA", "PCES"),
-            "food": ("DFXARG3M086SBEA", "DFXARC1"),
-            "energy": ("DNRGRG3M086SBEA", "DNRGRC1"),
-            "energy_goods": ("DGOERG3M086SBEA", "DGOERC1"),
-            "housing": ("DHSGRG3M086SBEA", "DHSGRC1"),
-        }
+        core_n = self.m("DPCCRC1M027SBEA", "last")
+        # 住房占核心的年度比重
+        core_year: dict[int, list[float]] = {}
+        for d, v in core_n:
+            core_year.setdefault(d.year, []).append(v)
+        housing_w = {d.year: v / (sum(core_year[d.year]) / len(core_year[d.year]))
+                     for d, v in self.s("DHSGRC1A027NBEA")
+                     if len(core_year.get(d.year, [])) == 12}
 
-        def contrib(key: str, lag: int) -> Series:
-            p_id, n_id = pairs[key]
-            p = self.m(p_id, "last")
-            n = self.m(n_id, "last")
-            share = ts.combine(lambda a, b: a / b if b else None, n, total_n)
-            chg = ts.pct_change(p, lag, "M")
-            share_lag = {ts._shift_month(d, lag): v for d, v in share}
-            return [(d, share_lag[d] * v) for d, v in chg if d in share_lag]
+        def share(n_id: str | None, nominal: Series | None = None) -> dict[date, float]:
+            n = nominal if nominal is not None else self.m(n_id, "last")
+            return dict(ts.combine(lambda a, b: a / b if b else None, n, total_n))
+
+        def contrib(sh: dict[date, float], price: Series, lag: int) -> Series:
+            out = []
+            for d, v in ts.pct_change(price, lag, "M"):
+                base = ts._shift_month(d, -lag)
+                if base in sh:
+                    out.append((d, sh[base] * v))
+            return out
+
+        def housing_weight(base: date) -> float | None:
+            for y in range(base.year - 1, base.year - 4, -1):
+                if y in housing_w:
+                    return housing_w[y]
+            return None
 
         def build(lag: int) -> list[Line]:
-            c = {k: contrib(k, lag) for k in pairs}
-            sub = lambda *xs: ts.combine(lambda a, *rest: a - sum(rest), *xs)  # noqa: E731
-            energy_services = sub(c["energy"], c["energy_goods"])
-            core_goods = sub(c["goods"], c["food"], c["energy_goods"])
-            core_services = sub(c["services"], energy_services)
-            lines = [Line("食品", c["food"], "bar", stack="pce"),
-                     Line("能源", c["energy"], "bar", stack="pce"),
-                     Line("核心商品", core_goods, "bar", stack="pce")]
-            if c["housing"]:
-                lines += [Line("住房", c["housing"], "bar", stack="pce"),
-                          Line("核心服务除住房", sub(core_services, c["housing"]), "bar", stack="pce")]
+            food = contrib(share("DFXARC1M027SBEA"), self.m("DFXARG3M086SBEA", "last"), lag)
+            energy = contrib(share("DNRGRC1M027SBEA"), self.m("DNRGRG3M086SBEA", "last"), lag)
+            core_sh = share(None, core_n)
+            core = contrib(core_sh, self.m("PCEPILFE", "last"), lag)
+            exh_sh = {}
+            for d, v in core_sh.items():
+                w = housing_weight(d)
+                if w is not None:
+                    exh_sh[d] = v * (1 - w)
+            ex_housing = contrib(exh_sh, self.m("IA001176M", "last"), lag)
+            housing = ts.combine(lambda a, b: a - b, core, ex_housing)
+            lines = [Line("食品", food, "bar"), Line("能源", energy, "bar")]
+            if ex_housing:
+                lines += [Line("住房", housing, "bar"), Line("核心除住房", ex_housing, "bar")]
             else:
-                lines.append(Line("核心服务", core_services, "bar", stack="pce"))
+                lines.append(Line("核心", core, "bar"))
             return lines
 
         return build(1), build(12)
@@ -373,6 +388,11 @@ class MacroBuilder:
         ccpi_yoy = ts.pct_change(ccpi, 12, "M")
         ccpi_mom = ts.pct_change(ccpi, 1, "M")
         mom_lines, yoy_lines = self.pce_contributions()
+        supercore = self.m("IA001260M", "last")
+        supercore_yoy = ts.pct_change(supercore, 12, "M")
+        supercore_3m = ts.pct_change(supercore, 3, "M", annualize=12)
+        goods_yoy = self.yoy_m("DGDSRG3M086SBEA")
+        services_yoy = self.yoy_m("DSERRG3M086SBEA")
         fwd = self.w("T5YIFR")
         be10 = self.w("T10YIE")
         mich = self.m("MICH", "last")
@@ -384,12 +404,16 @@ class MacroBuilder:
                     note="美联储 2% 目标针对的是 PCE 同比。"),
                 Chart("pce_mom", "PCE 与核心 PCE 环比", "%", [
                     Line("PCE", pce_mom, "bar"), Line("核心 PCE", core_mom, "bar")]),
+                Chart("supercore", "超级核心与商品、服务价格同比", "%", [
+                    Line("超级核心（服务除能源、住房）", supercore_yoy), Line("超级核心 3 个月年化", supercore_3m, dash=True),
+                    Line("PCE 商品", goods_yoy), Line("PCE 服务", services_yoy)],
+                    note="超级核心是美联储最关注的与工资相关的服务通胀。"),
                 Chart("core_pce_ann", "核心 PCE 年化动能", "%", [
                     Line("3 个月年化", core_3m), Line("6 个月年化", core_6m), Line("同比", core_yoy, dash=True)]),
                 Chart("pce_contrib_mom", "PCE 环比：按贡献拆分", "百分点",
                       mom_lines + [Line("PCE 环比", pce_mom)], stacked="bar", start=date(2015, 1, 1),
-                      note="贡献 = 上月名义支出份额 × 分项价格环比。能源含汽油与电、燃气；"
-                           "核心服务除住房即常说的「超级核心」。"),
+                      note="贡献 = 上月名义支出份额 × 分项价格环比。能源含汽油与电、燃气。"
+                           "住房在核心里的比重用上一年的年度数据（FRED 没有月度住房支出）。"),
                 Chart("pce_contrib_yoy", "PCE 同比：按贡献拆分", "百分点",
                       yoy_lines + [Line("PCE 同比", pce_yoy)], stacked="bar", start=date(2005, 1, 1),
                       note="贡献 = 12 个月前名义支出份额 × 分项价格同比。"),
@@ -407,6 +431,7 @@ class MacroBuilder:
             Kpi("核心 PCE 同比", core_yoy, "%", "{:.2f}"),
             Kpi("核心 PCE 环比", core_mom, "%", "{:.2f}"),
             Kpi("核心 PCE 3 个月年化", core_3m, "%", "{:.2f}"),
+            Kpi("超级核心 PCE 同比", supercore_yoy, "%", "{:.2f}"),
             Kpi("CPI 同比", cpi_yoy, "%", "{:.2f}"),
             Kpi("核心 CPI 同比", ccpi_yoy, "%", "{:.2f}"),
             Kpi("核心 CPI 环比", ccpi_mom, "%", "{:.2f}"),
@@ -417,6 +442,7 @@ class MacroBuilder:
             Component("核心 PCE 同比", core_yoy, +1),
             Component("核心 PCE 3 个月年化", core_3m, +1),
             Component("核心 CPI 同比", ccpi_yoy, +1),
+            Component("超级核心 PCE 3 个月年化", supercore_3m, +1),
             Component("时薪同比", ts.pct_change(self.m("CES0500000003", "last"), 12, "M"), +1),
             Component("5y5y 远期通胀", self.m("T5YIFR"), +1),
             Component("密歇根一年期预期", mich, +1),
@@ -522,10 +548,12 @@ class MacroBuilder:
         gdp = self.s("GDP")
         deficit_pct = [(d, v / g * 100) for d, v in deficit12
                        if (g := ts.asof(gdp, d, 200))]
-        annual_def = ts.scale(self.s("FYFSGDA188S"), -1)
+        # 财年数据 FRED 记在当年 1 月 1 日，挪到财年结束的 9 月 30 日，和月度线对齐
+        fy_end = lambda s: [(date(d.year, 9, 30), v) for d, v in s]  # noqa: E731
+        annual_def = fy_end(ts.scale(self.s("FYFSGDA188S"), -1))
         interest_pct = ts.combine(lambda a, b: a / b * 100 if b else None,
                                   self.s("A091RC1Q027SBEA"), gdp)
-        interest_fy = self.s("FYOIGDA188S")
+        interest_fy = fy_end(self.s("FYOIGDA188S"))
         debt = self.s("GFDEGDQ188S")
 
         groups = [
@@ -534,7 +562,7 @@ class MacroBuilder:
                       note="正值为赤字。按月度财政报告（MTS）的收支差滚动加总。"),
                 Chart("deficit_pct", "赤字率", "% GDP", [
                     Line("滚动 12 个月 / 名义 GDP", deficit_pct), Line("财年赤字率", annual_def, "bar")],
-                    note="正值为赤字。财年截至 9 月。"),
+                    note="正值为赤字。柱子是财年数据，画在财年结束的 9 月底。"),
             )),
             ("利息与债务", self.add(
                 Chart("interest", "联邦利息支出占 GDP", "% GDP", [
@@ -552,8 +580,8 @@ class MacroBuilder:
         comps = [
             Component("赤字率", deficit_pct, +1),
             Component("赤字率 12 个月变化", ts.diff(deficit_pct, 12, "M"), +1),
-            Component("利息支出占 GDP", ts.to_monthly(interest_pct), +1, 200),
-            Component("债务占 GDP", ts.to_monthly(debt), +1, 200),
+            Component("利息支出占 GDP", ts.to_monthly(interest_pct), +1, 280),
+            Component("债务占 GDP", ts.to_monthly(debt), +1, 280),
         ]
         return groups, kpis, comps
 
@@ -746,7 +774,7 @@ class MacroBuilder:
             "asof": self.asof.isoformat(),
             "score_method": f"每项按 {SCORE_START.year} 年以来的均值与标准差做 z 分数（截断在 ±{Z_CLIP:g}），"
                             f"方向统一后等权平均。高于 +{LABEL_BAND} 或低于 −{LABEL_BAND} 视为明显偏离常态。"
-                            "刚发布的数据还没出来时，沿用最近一次读数（月频最多 4 个月、季频最多 6 个月）。",
+                            "刚发布的数据还没出来时，沿用最近一次读数（月频最多 4 个月、季频最多 9 个月）。",
             "dimensions": out_dims,
             "kpis": kpis,
             "sections": sections,

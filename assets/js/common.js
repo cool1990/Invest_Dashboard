@@ -157,7 +157,8 @@ function drawChart(canvas, spec, opts = {}) {
   const x = spec.kind === "path"
     ? { type: "category", labels: spec.categories, grid: { display: false }, ticks: { color: P.muted }, border: { color: P.axis } }
     : {
-        type: "time", time: { tooltipFormat: "yyyy-MM-dd" },
+        type: "time",
+        time: { tooltipFormat: "yyyy-MM-dd", displayFormats: { day: "MM-dd", week: "yyyy-MM-dd", month: "yyyy-MM", quarter: "yyyy-MM", year: "yyyy" } },
         grid: { display: false }, border: { color: P.axis },
         ticks: { color: P.muted, maxRotation: 0, autoSkipPadding: 18 },
       };
@@ -172,6 +173,7 @@ function drawChart(canvas, spec, opts = {}) {
         x,
         y: {
           stacked: stackedArea || stackedBar,
+          beginAtZero: stackedArea || datasets.some((d) => d.type === "bar"),
           grid: { color: P.grid, drawTicks: false }, border: { display: false },
           ticks: { color: P.muted, padding: 6, maxTicksLimit: 6 },
         },

@@ -58,15 +58,13 @@ class SeriesTest(unittest.TestCase):
 
 
 class PceContributionTest(unittest.TestCase):
-    """构造一组可加的分项，检验各项贡献之和等于总体环比。"""
+    """构造一组可加的分项，检验各项贡献之和接近总体变化。"""
 
     def setUp(self):
-        ms = months(date(2020, 1, 1), 30)
-        # 分项名义支出与价格：食品、能源商品、能源服务、核心商品、住房、其他服务
-        comp = {
-            "food": (100.0, 0.002), "egoods": (40.0, 0.01), "eserv": (30.0, -0.004),
-            "cgoods": (300.0, 0.001), "housing": (200.0, 0.004), "oserv": (330.0, 0.003),
-        }
+        ms = months(date(2019, 1, 1), 42)
+        # 分项名义支出与价格月增速：食品、能源、住房、核心除住房
+        comp = {"food": (100.0, 0.002), "energy": (60.0, -0.004),
+                "housing": (200.0, 0.004), "exh": (640.0, 0.002)}
         price = {k: [] for k in comp}
         nominal = {k: [] for k in comp}
         for i, d in enumerate(ms):
@@ -79,45 +77,51 @@ class PceContributionTest(unittest.TestCase):
             return [(d, sum(nominal[k][i][1] for k in keys)) for i, d in enumerate(ms)]
 
         def price_of(*keys):
-            # 用份额加权的链式指数近似合成价格
             out, level = [], 100.0
             for i, d in enumerate(ms):
                 if i:
                     tot = sum(nominal[k][i - 1][1] for k in keys)
-                    level *= 1 + sum(nominal[k][i - 1][1] / tot * (price[k][i][1] / price[k][i - 1][1] - 1) for k in keys)
+                    level *= 1 + sum(nominal[k][i - 1][1] / tot * (price[k][i][1] / price[k][i - 1][1] - 1)
+                                     for k in keys)
                 out.append((d, level))
             return out
 
-        goods = ("food", "egoods", "cgoods")
-        services = ("eserv", "housing", "oserv")
-        allk = goods + services
+        allk = tuple(comp)
+        housing_annual = []
+        for y in (2019, 2020, 2021):
+            vals = [v for d, v in nominal["housing"] if d.year == y]
+            housing_annual.append((date(y, 1, 1), sum(vals) / len(vals)))
         self.raw = {
             "PCE": add(*allk), "PCEPI": price_of(*allk),
-            "DGDSRG3M086SBEA": price_of(*goods), "DGDSRC1": add(*goods),
-            "DSERRG3M086SBEA": price_of(*services), "PCES": add(*services),
-            "DFXARG3M086SBEA": price["food"], "DFXARC1": nominal["food"],
-            "DNRGRG3M086SBEA": price_of("egoods", "eserv"), "DNRGRC1": add("egoods", "eserv"),
-            "DGOERG3M086SBEA": price["egoods"], "DGOERC1": nominal["egoods"],
-            "DHSGRG3M086SBEA": price["housing"], "DHSGRC1": nominal["housing"],
+            "DFXARG3M086SBEA": price["food"], "DFXARC1M027SBEA": nominal["food"],
+            "DNRGRG3M086SBEA": price["energy"], "DNRGRC1M027SBEA": nominal["energy"],
+            "PCEPILFE": price_of("housing", "exh"), "DPCCRC1M027SBEA": add("housing", "exh"),
+            "IA001176M": price["exh"], "DHSGRC1A027NBEA": housing_annual,
         }
 
     def test_contributions_sum_to_headline(self):
-        b = MacroBuilder(self.raw, asof=date(2022, 7, 1))
-        mom, yoy = b.pce_contributions()
-        headline = dict(ts.pct_change(self.raw["PCEPI"], 1, "M"))
+        mom, yoy = MacroBuilder(self.raw, asof=date(2022, 7, 1)).pce_contributions()
+        self.assertEqual([ln.name for ln in mom], ["食品", "能源", "住房", "核心除住房"])
         maps = [dict(ln.data) for ln in mom]
-        self.assertEqual([ln.name for ln in mom], ["食品", "能源", "核心商品", "住房", "核心服务除住房"])
-        for d, h in headline.items():
-            self.assertAlmostEqual(sum(m[d] for m in maps), h, places=6)
-        # 超级核心 = 其他服务单独的贡献
+        headline = dict(ts.pct_change(self.raw["PCEPI"], 1, "M"))
+        common = set.intersection(*(set(m) for m in maps))
+        self.assertTrue(common)
+        for d in common:
+            # 住房比重用上一年的年度值，与当月真实比重略有差别
+            self.assertAlmostEqual(sum(m[d] for m in maps), headline[d], delta=0.002)
         d = date(2021, 6, 1)
-        oserv = maps[4][d]
-        self.assertGreater(oserv, 0)
-        # 同比口径也应接近总体同比（链式误差很小）
+        self.assertAlmostEqual(maps[0][d], 100 * 1.002 ** 28 / dict(self.raw["PCE"])[date(2021, 5, 1)] * 0.2, places=6)
+        self.assertGreater(maps[2][d], 0)
         yoy_head = dict(ts.pct_change(self.raw["PCEPI"], 12, "M"))
         ymaps = [dict(ln.data) for ln in yoy]
-        for d, h in yoy_head.items():
-            self.assertAlmostEqual(sum(m[d] for m in ymaps), h, delta=0.05)
+        for d in set.intersection(*(set(m) for m in ymaps)):
+            self.assertAlmostEqual(sum(m[d] for m in ymaps), yoy_head[d], delta=0.05)
+
+    def test_without_housing_falls_back_to_core(self):
+        raw = dict(self.raw)
+        raw.pop("DHSGRC1A027NBEA")
+        mom, _ = MacroBuilder(raw).pce_contributions()
+        self.assertEqual([ln.name for ln in mom], ["食品", "能源", "核心"])
 
 
 class ReservesTest(unittest.TestCase):
