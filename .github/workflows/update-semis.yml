@@ -1,9 +1,11 @@
-name: 更新宏观数据
+name: 更新半导体数据
 
 on:
   schedule:
-    # 每天 22:40 UTC（北京时间次日 06:40），美国当天的数据都已进 FRED
-    - cron: "40 22 * * *"
+    # 每天 02:10 UTC（北京时间 10:10）：旧站早晨的半导体笔记已收录
+    - cron: "10 2 * * *"
+    # 每月 5–12 日 08:10 UTC（北京时间 16:10）再跑一次：台湾月营收在次月 10 日前公布，台积电下午 1:30
+    - cron: "10 8 5-12 * *"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +14,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: update-macro
+  group: update-semis
   cancel-in-progress: false
 
 jobs:
@@ -28,9 +30,12 @@ jobs:
           python-version: "3.12"
       - name: 测试
         run: python3 -m unittest discover -s tests
-      - name: 下载 FRED 并生成看板数据
-        # 单条序列失败不会让这一步失败：沿用旧文件，并记进 data/macro/status.json。
-        run: python3 scripts/update_macro.py
+      - name: 下载并生成看板数据
+        # 单个来源失败不会让这一步失败：沿用旧文件，并记进 data/semis/status.json。
+        # KOSIS_API_KEY 可选：没有时库存周期改用美国数据。
+        env:
+          KOSIS_API_KEY: ${{ secrets.KOSIS_API_KEY }}
+        run: python3 scripts/update_semis.py
       - name: 提交数据
         id: commit
         run: |
@@ -42,8 +47,8 @@ jobs:
             echo "数据没有变化"
             exit 0
           fi
-          git commit -m "data: 更新宏观数据"
-          # 半导体工作流也会提交 data/，先把它的提交拉下来再推（两边写的文件不重叠）
+          git commit -m "data: 更新半导体数据"
+          # 宏观工作流也会提交 data/，先把它的提交拉下来再推（两边写的文件不重叠）
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push
           echo "changed=true" >> "$GITHUB_OUTPUT"

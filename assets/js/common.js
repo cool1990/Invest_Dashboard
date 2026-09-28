@@ -4,7 +4,7 @@
 const NAV = [
   { href: "index.html", label: "总览" },
   { href: "macro.html", label: "宏观" },
-  { label: "半导体与 AI", soon: true },
+  { href: "semis.html", label: "半导体与 AI" },
   { label: "加密货币", soon: true },
   { label: "个股", soon: true },
 ];
@@ -191,7 +191,9 @@ function applyRange(chart, startMs) {
     ds.data = chart._spec.kind === "path" || startMs === null ? ds._full : ds._full.filter((p) => p.x >= startMs);
   }
   if (chart._spec.kind !== "path") {
-    chart.options.scales.x.min = startMs ?? undefined;
+    // 数据比所选范围短（例如只有几周的笔记数据）时，从第一个数据点开始画，不留大片空白
+    const first = Math.min(...chart.data.datasets.map((ds) => (ds._full[0] ? ds._full[0].x : Infinity)));
+    chart.options.scales.x.min = startMs !== null && first < startMs ? startMs : undefined;
   }
   chart.update("none");
 }

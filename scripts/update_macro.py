@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from pipeline import fred  # noqa: E402
+from pipeline import fred, statelog  # noqa: E402
 from pipeline.macro import consensus, effr_expect  # noqa: E402
 from pipeline.macro.build import build_dashboard  # noqa: E402
 from pipeline.macro.indicators import FRED  # noqa: E402
@@ -27,39 +27,24 @@ STATUS = OUT / "status.json"
 
 
 LOG = OUT / "state_log.csv"
-LOG_FIELDS = ["date", "dim", "name", "from", "to", "head", "trigger"]
-LOG_DAYS = 30
 
 
 def update_state_log(dash: dict, write: bool) -> list[dict]:
-    """状态标签（五个维度 + 整体环境）和上一次记录不同时追加一行，并记下最近 3 天的相关发布。
-
-    只比较标签，不比较一句话：一句话里有具体数字，几乎每天都会变。
-    """
-    rows = consensus.read_csv(LOG)
-    last = {}
-    for r in rows:
-        last[r["dim"]] = r
+    """五个维度 + 整体环境的标签有变化就记一行，并记下最近 3 天的相关发布。"""
     today = dash["asof"]
     recent = [r for r in dash["releases"]["recent"]
               if r.get("release_at", "")[:10] >= (date.fromisoformat(today) - timedelta(days=3)).isoformat()]
     current = [(d["key"], d["name"], d["label"], d["head"]) for d in dash["dimensions"]]
     current.append(("overall", "整体环境", dash["verdict"]["name"], dash["verdict"]["headline"]))
-    for key, name, label, head in current:
-        prev = last.get(key)
-        if prev and prev["to"] == label:
-            continue
+
+    def trigger(key: str) -> str:
         rel = [r for r in recent if key == "overall" or r.get("dim") == key]
-        trigger = "；".join(
+        return "；".join(
             f"{r.get('bj', '')} {r['title']} {r.get('actual_text', '')}".strip()
             + (f"（预期 {r['forecast_text']}）" if r.get("forecast_text") else "")
-            for r in rel) if prev else "开始记录"
-        rows.append({"date": today, "dim": key, "name": name, "from": prev["to"] if prev else "",
-                     "to": label, "head": head, "trigger": trigger})
-    if write:
-        consensus.write_csv(LOG, rows, LOG_FIELDS)
-    cutoff = (date.fromisoformat(today) - timedelta(days=LOG_DAYS)).isoformat()
-    return sorted((r for r in rows if r["date"] >= cutoff), key=lambda r: r["date"], reverse=True)
+            for r in rel)
+
+    return statelog.update(LOG, today, current, trigger, write)
 
 
 def main() -> int:
