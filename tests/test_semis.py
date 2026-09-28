@@ -204,7 +204,7 @@ class BuildTest(unittest.TestCase):
     def test_end_to_end(self):
         d = B.build_dashboard(fixture_sources(), date(2026, 9, 28), datetime(2026, 9, 28, 2, tzinfo=timezone.utc))
         keys = [x["key"] for x in d["dimensions"]]
-        self.assertEqual(keys, ["ai_demand", "trad_demand", "capacity", "inventory", "price", "segments"])
+        self.assertEqual(keys, ["ai_demand", "trad_demand", "capacity", "inventory", "price"])
         dims = [x for x in d["dimensions"] if x.get("side")]
         self.assertEqual([x["side"] for x in dims], ["需求端", "需求端", "供给端", "供给端", "供给端"])
         labels = {x["key"]: x["label"] for x in dims}
@@ -219,23 +219,18 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(len(pos["votes"]), 5)
         self.assertTrue(all(x["vote"] for x in dims))
         self.assertTrue(all(w["now"] and w["cond"] and w["meaning"] for w in pos["watch"]))
-        # 分环节：五个环节，存储里有韩国出口（取最新期间最完整的一档）
-        segs = {x["key"]: x for x in d["segments"]}
-        self.assertEqual(list(segs), ["memory", "ai", "mature", "analog", "equip"])
-        self.assertEqual([x["name"] for x in segs["memory"]["leading"]], ["DRAM 现货", "韩国芯片出口同比", "现货比合约"])
-        self.assertIn("2026-09 前 20 日", segs["memory"]["leading"][1]["value"])
-        self.assertNotIn("数据不足", [x["state"] for x in segs.values()])
-        # 公司：季报有同比、环比、毛利率和上期；台湾月营收没有毛利率
-        mu = segs["memory"]["companies"][0]
-        self.assertEqual((mu["name"], mu["freq"], mu["period"]), ("美光", "Q", "2026Q2"))
-        self.assertAlmostEqual(mu["yoy"], (1.01 ** 4 - 1) * 100)
-        self.assertAlmostEqual(mu["qoq"], 1.0)
-        self.assertIsNotNone(mu["gm"])
-        self.assertIsNotNone(mu["gm_prev"])
-        tsmc = next(c for c in segs["ai"]["companies"] if c["name"] == "台积电")
-        self.assertEqual(tsmc["freq"], "M")
-        self.assertIsNone(tsmc["gm"])
-        self.assertAlmostEqual(tsmc["qoq"], 2.0)
+        # 不再有分环节：原来环节里的数按供需归到各维度，标「参考」不进判断
+        self.assertNotIn("segments", d)
+        self.assertEqual([x["side"] for x in d["sections"]], ["需求端", "需求端", "供给端", "供给端", "供给端"])
+        where = {m["id"]: dim["key"] for dim in d["dimensions"] for m in dim["metrics"]}
+        self.assertEqual(where["tsmc_yoy"], "ai_demand")
+        self.assertEqual(where["korea_yoy"], "inventory")
+        self.assertEqual(where["mu_rev_yoy"], "price")
+        korea = next(m for dim in d["dimensions"] for m in dim["metrics"] if m["id"] == "korea_yoy")
+        self.assertTrue(korea["ref"])
+        self.assertIn("2026-09 前 20 日", korea["note"])
+        charts = {c for sec in d["sections"] for g in sec["groups"] for c in g["charts"]}
+        self.assertTrue({"tsmc", "korea", "mu_rev", "gm"} <= charts, charts)
         # 日历：只留 14 天内，按日期排序
         self.assertEqual([x["title"] for x in d["releases"]["upcoming"]],
                          ["美光（MU）财报", "韩国9月进出口（产业通商部，全月初值）"])
@@ -252,7 +247,6 @@ class BuildTest(unittest.TestCase):
     def test_empty_sources(self):
         d = B.build_dashboard(B.Sources(), date(2026, 9, 28))
         self.assertEqual(d["verdict"]["name"], "数据不足")
-        self.assertEqual({x["state"] for x in d["segments"]}, {"数据不足"})
 
     def test_quarter_gap_no_accel(self):
         # 同比序列中间缺一季时，不拿隔季的数算加速
@@ -307,34 +301,12 @@ class PositionTest(unittest.TestCase):
         self.assertEqual(len(one["votes"]), 4)
         self.assertEqual(self.pos(_st("数据不足"), _st("数据不足"), _st("主动补库"), _st("涨价"), _st("平稳"))["name"], "数据不足")
 
-    def test_segments_and_watch(self):
-        self.assertEqual(I.segment_state(20, 10), "上行加速")
-        self.assertEqual(I.segment_state(20, 30), "上行放缓")
-        self.assertEqual(I.segment_state(-5, -10), "触底回升")
-        self.assertEqual(I.segment_state(-5, 2), "下行")
-        self.assertEqual(I.segment_state(None, 2), "数据不足")
+    def test_watch(self):
         w = I.watch_list("上行", {"inv_gap": "+6.5"})
         self.assertEqual(len(w), 1)
         self.assertEqual(w[0]["cond"], "转负")
         self.assertIn("见顶", w[0]["meaning"])
         self.assertIn("见底", I.watch_list("下行", {"inv_gap": "-2"})[0]["meaning"])
-
-    def test_company_row(self):
-        b = B.SemisBuilder(B.Sources())
-        q = [date(2025, 4, 1), date(2025, 7, 1), date(2025, 10, 1), date(2026, 1, 1), date(2026, 4, 1)]
-        rev = list(zip(q, [100.0, 110.0, 120.0, 130.0, 150.0]))
-        cogs = list(zip(q, [50.0, 50.0, 60.0, 65.0, 60.0]))
-        r = b.company_row("甲", rev, cogs, 3)
-        self.assertAlmostEqual(r["yoy"], 50.0)
-        self.assertIsNone(r["yoy_prev"])  # 上一季没有一年前的数
-        self.assertAlmostEqual(r["qoq"], (150 / 130 - 1) * 100)
-        self.assertAlmostEqual(r["qoq_prev"], (130 / 120 - 1) * 100)
-        self.assertAlmostEqual(r["gm"], 60.0)
-        self.assertAlmostEqual(r["gm_prev"], 50.0)
-        # 缺一季：环比为空，不拿隔季的数
-        gap = b.company_row("乙", [x for x in rev if x[0] != date(2026, 1, 1)], None, 3)
-        self.assertIsNone(gap["qoq"])
-        self.assertIsNone(gap["gm"])
 
 
 class StateLogTest(unittest.TestCase):

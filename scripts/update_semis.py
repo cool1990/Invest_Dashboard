@@ -102,9 +102,8 @@ def main() -> int:
         "calendar_error": errors.get("calendar"),
     }
 
-    # 判断变化日志：五个维度 + 各环节 + 景气位置
-    current = [(d["key"], d["name"], d["label"], d["head"]) for d in dash["dimensions"] if d.get("kind") != "segments"]
-    current += [(f"seg_{x['key']}", f"环节·{x['name']}", x["state"], x["basis"]) for x in dash.get("segments", [])]
+    # 判断变化日志：五个维度 + 景气位置
+    current = [(d["key"], d["name"], d["label"], d["head"]) for d in dash["dimensions"]]
     current.append(("overall", "景气位置", dash["verdict"]["name"], dash["verdict"]["headline"]))
     recent_obs = [f"{SOURCE_NAMES[s['key']]} 更新到 {s['last_obs']}" for s in sources
                   if s["last_obs"] and s["last_obs"][:10] >= (today - timedelta(days=3)).isoformat()[: len(s["last_obs"][:10])]]
