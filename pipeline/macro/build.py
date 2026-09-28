@@ -1,10 +1,10 @@
 """把原始 FRED 序列整理成页面要用的 data/macro/dashboard.json。
 
 页面分三层，每层只放别的层没有的东西：
-- 结论：verdict（整体环境两行：增长 × 通胀定象限，货币路径与流动性作条件）
-  和 dimensions 的 label / head（五个维度各一句状态）。
+- 结论：verdict（增长 × 通胀定环境名，下面四行白话写经济、流动性、财政、货币）
+  和 dimensions 的 label / why（五个维度各一个标签，理由写用哪几个数、对照什么锚点得出）。
   不用 z 分数：和「2000 年以来平均」比没有经济含义，等权汇总又会把分歧抵消掉。
-- 依据：dimensions 的 metrics（决定那句状态的几个数：最新值、较上期、对照的锚点），
+- 依据：dimensions 的 metrics（决定标签的几个数：最新值、较上期、对照的锚点），
   sections + charts（这几个数对应的图，core=True 的默认展开，其余折叠），
   通胀一块另附克利夫兰联储 Nowcast 与实际的对照（releases.nowcast）。
 - 时间：releases 的即将发布（附情景门槛）与最近发布（实际 vs 预期）。
@@ -346,6 +346,7 @@ class MacroBuilder:
         self.inputs["growth"] = {
             "gdpnow": gdpnow[-1][1] if gdpnow else None, "gdp_q": gdp_qoq[-1][1] if gdp_qoq else None,
             "nfp3": nfp3[-1][1] if nfp3 else None, "nfp3_ago": nfp3[-2][1] if len(nfp3) >= 2 else None,
+            "unrate": unrate[-1][1] if unrate else None,
             "unrate_chg12": ts.diff(unrate, 12, "M")[-1][1] if len(unrate) > 12 else None,
             "sahm": sahm[-1][1] if sahm else None,
             "core_gdp": core_q, "contrib": {k: dict(v).get(q) for k, v in contrib.items()} if q else {},
@@ -645,6 +646,7 @@ class MacroBuilder:
             "deficit": deficit_pct[-1][1] if deficit_pct else None,
             "deficit_chg12": deficit_chg[-1][1] if deficit_chg else None,
             "interest": interest_pct[-1][1] if interest_pct else None,
+            "debt": debt[-1][1] if debt else None,
         })
         return groups, metrics, state
 
@@ -905,22 +907,24 @@ class MacroBuilder:
         out_dims, sections = [], []
         for key, name, groups, metrics, state in built:
             out_dims.append({
-                "key": key, "name": name, "label": state["label"], "head": state["head"],
+                "key": key, "name": name, "label": state["label"], "why": state.get("why", []),
+                "head": state["head"],
                 "metrics": [x for x in (self.metric_json(m, state.get("anchors", {})) for m in metrics) if x],
             })
             sections.append({"key": key, "name": name,
                              "groups": [{"name": g, "charts": ids} for g, ids in groups if ids]})
 
         st = self.states
-        env = I.environment(st["growth"], st["inflation"], st["policy"], st["liquidity"])
+        env = I.environment(st["growth"], st["inflation"], st["policy"], st["liquidity"], st["fiscal"])
         return {
             "asof": self.asof.isoformat(),
-            "method": "每个维度按经济锚点判断，只用已经公布的数据定状态：增长的产出看上季实际 GDP 对约 2% 的潜在增速"
+            "method": "每个维度按经济锚点判断，只用已经公布的数据定状态：增长的产出看上季核心 GDP（消费 + 固定投资）对约 2% 的潜在增速"
                       "（GDPNow 是模型预测，只作参考），就业看非农 3 个月均值、失业率和 Sahm；"
-                      "通胀看核心 PCE 对 2% 目标和 3 个月年化的短期动能，克利夫兰联储 Nowcast 只按它和官方值差多少来措辞；"
+                      "通胀看核心 PCE 对 2% 目标和 3 个月年化的短期动能，并看超级核心和 5y5y；"
+                      "克利夫兰联储 Nowcast 是模型预测，不改标签，只有和官方值差超过 0.3 个百分点才写进理由；"
                       "流动性分资金市场、金融条件、信用三块；财政分财政脉冲与偿债压力；货币分当前立场与市场路径。"
-                      "整体环境由增长 × 通胀的组合决定。阈值都写在 pipeline/macro/interpret.py。",
-            "verdict": {"name": env["name"], "headline": env["head"], "sub": env["sub"]},
+                      "整体环境的名字由增长 × 通胀的组合决定。阈值都写在 pipeline/macro/interpret.py。",
+            "verdict": {"name": env["name"], "headline": env["head"], "lines": env["lines"]},
             "dimensions": out_dims,
             "releases": releases,
             "sections": sections,
