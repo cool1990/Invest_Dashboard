@@ -620,13 +620,14 @@ class SemisBuilder:
 
         def seg(key, name, what, main_name, main, months, leading, companies):
             yoy, prev = self._last_prev(main, months)
-            basis = "" if yoy is None else f"{main_name}同比 {yoy:+.1f}%" + (f"（上期 {prev:+.1f}%）" if prev is not None else "")
+            # 主指标就是表里某家公司的营收同比时（存储 = 美光）不再重复写
+            basis = "" if yoy is None or main_name is None else f"{main_name}同比 {yoy:+.1f}%" + (f"（上期 {prev:+.1f}%）" if prev is not None else "")
             return {"key": key, "name": name, "what": what, "state": I.segment_state(yoy, prev), "basis": basis,
                     "leading": [x for x in leading if x], "companies": [c for c in companies if c]}
 
         dram, eps_t, orders = f.get("dram"), f.get("eps_trad"), f.get("orders")
         segs = [
-            seg("memory", "存储", "DRAM、NAND、HBM；周期弹性最大，最先反映供需", "美光营收", mu_yoy, 3,
+            seg("memory", "存储", "DRAM、NAND、HBM；周期弹性最大，最先反映供需", None, mu_yoy, 3,
                 [dram and lead("DRAM 现货", f"{dram[1]} 天 {dram[0]:+.1f}%", "现货领先合约价 1–2 季"),
                  korea is not None and lead("韩国芯片出口同比", f"{korea:+.1f}%（{korea_period}）", "最早的出货数据，金额含涨价"),
                  f.get("premium") is not None and lead("现货比合约", f"{f['premium']:+.1f}%", "> 5% 时下季合约价大概率跟涨")],
