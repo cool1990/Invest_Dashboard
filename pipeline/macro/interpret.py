@@ -283,7 +283,8 @@ def environment(g: dict, i: dict, p: dict, liq: dict) -> dict:
         (1, -1): "复苏", (0, -1): "低通胀", (-1, -1): "衰退风险",
     }
     name = names[(gl, il)]
-    g_txt = g.get("head", "增长" + g.get("label", "")).split("：")[0]
+    # 标题只写产出、就业两档；GDP 总量被哪一项拉低的说明留在增长那一行，避免括号套括号
+    g_txt = f"产出{g['output']}、就业{g['labor']}" if "output" in g else "增长" + g.get("label", "")
     if g.get("split"):
         g_txt = f"增长分化（{g_txt}）"
     head = f"{name}：{g_txt}，通胀{i['label']}"
