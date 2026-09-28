@@ -73,6 +73,28 @@ EVENTS: dict[str, EventSpec] = {
     "Prelim UoM Inflation Expectations": EventSpec("mich", "密歇根一年期通胀预期（初值）", "%", ("M", 0), "热"),
 }
 
+# 指标 key → 所属维度（「即将发布」里标出它影响哪一块判断）
+KEY_DIM = {
+    "nfp": "growth", "unrate": "growth", "ahe_mom": "inflation", "cpi_mom": "inflation", "cpi_yoy": "inflation",
+    "core_cpi_mom": "inflation", "core_cpi_yoy": "inflation", "core_pce_mom": "inflation",
+    "core_pce_yoy": "inflation", "pce_mom": "inflation", "pce_yoy": "inflation", "retail_mom": "growth",
+    "retail_exauto_mom": "growth", "gdp_qoq": "growth", "jolts": "growth", "icsa": "growth", "dgo_mom": "growth",
+    "permit": "growth", "houst": "growth", "hsn": "growth", "empire": "growth", "philly": "growth",
+    "mich": "inflation",
+}
+WATCH_DIM = {
+    "ISM Manufacturing PMI": "growth", "ISM Services PMI": "growth", "Federal Funds Rate": "policy",
+    "Prelim UoM Consumer Sentiment": "growth", "CB Consumer Confidence": "growth",
+    "ADP Non-Farm Employment Change": "growth", "PPI m/m": "inflation", "Core PPI m/m": "inflation",
+    "FOMC Meeting Minutes": "policy", "Fed Chair Powell Speaks": "policy",
+}
+
+
+def dim_of(title: str) -> str | None:
+    spec = EVENTS.get(title)
+    return KEY_DIM.get(spec.key) if spec else WATCH_DIM.get(title)
+
+
 # 没有 FRED 实际值、但值得在「即将发布」里看预期的条目
 WATCH_ONLY = {
     "ISM Manufacturing PMI": "ISM 制造业 PMI",

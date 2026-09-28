@@ -1,4 +1,4 @@
-// 宏观页：总判断 → 核心指标 → 数据发布 → 明细图表。
+// 宏观页：整体环境 → 五维状态 → 即将发布 → 核心指标 → 最近发布 → 明细图表。
 "use strict";
 
 const RANGES = [
@@ -18,7 +18,6 @@ try { rangeKey = localStorage.getItem(RANGE_KEY) || rangeKey; } catch (_) {}
 if (!RANGES.some((r) => r.key === rangeKey)) rangeKey = "5y";
 
 const charts = new Map(); // id -> Chart
-const sparks = [];
 let DATA = null;
 
 function rangeStartMs() {
@@ -48,131 +47,106 @@ function renderRange() {
   };
 }
 
-// ---- 第一层：总判断 + 五维 ----
+// ---- 总判断 ----
 function renderVerdict() {
   const v = DATA.verdict || {};
-  const pts = (v.points || []).map((p) =>
-    `<li>${badge(p.level)}<span class="pt-name">${esc(p.dim)} · ${esc(p.name)} <b>${esc(p.value)}</b><small>${esc(p.unit)}</small></span><span class="pt-text">${esc(p.text)}</span></li>`
-  ).join("");
+  const byDim = new Map();
+  for (const p of v.points || []) {
+    if (!byDim.has(p.dim)) byDim.set(p.dim, []);
+    byDim.get(p.dim).push(p);
+  }
+  const groups = [...byDim.entries()].map(([dim, ps]) => `
+    <div class="risk-dim"><div class="risk-name">${esc(dim)}</div><ul class="points">${ps.map((p) =>
+      `<li>${badge(p.level)}<span class="pt-name">${esc(p.name)}${p.value ? ` <b>${esc(p.value)}</b><small>${esc(p.unit)}</small>` : ""}</span><span class="pt-text">${esc(p.text)}</span></li>`
+    ).join("")}</ul></div>`).join("");
   document.getElementById("verdict").innerHTML = `
-    <div class="v-label">总判断</div>
+    <div class="v-label">整体环境</div>
     <h2 class="v-head">${esc(v.headline || "—")}</h2>
     <div class="v-sub">${esc(v.sub || "")}</div>
-    ${pts ? `<div class="v-label" style="margin-top:14px">需要注意</div><ul class="points">${pts}</ul>` : ""}
-    <div class="small muted" style="margin-top:10px">解读由固定规则生成（阈值见各指标说明），仅供参考，不构成投资建议。</div>`;
+    ${groups ? `<details class="risks"><summary>分歧与风险（${(v.points || []).length} 条）</summary>${groups}</details>` : ""}
+    <div class="small muted" style="margin-top:10px">由固定规则按经济锚点判断（阈值见各指标说明），仅供参考，不构成投资建议。</div>`;
 }
 
-function meterPos(score) {
-  const s = Math.max(-2, Math.min(2, score ?? 0));
-  return ((s + 2) / 4) * 100;
-}
-
-function renderScores() {
-  const el = document.getElementById("scores");
-  el.innerHTML = DATA.dimensions.map((d) => {
-    const delta = d.score !== null && d.score_3m_ago !== null ? d.score - d.score_3m_ago : null;
-    const comps = (d.components || []).map((c) =>
-      `<span>${esc(c.name)}</span><span class="muted">${esc(c.date.slice(0, 7))}</span><span class="z">${fmtSigned(c.z)}</span>`
-    ).join("");
-    return `<article class="card score">
+// ---- 五维状态 ----
+function renderStates() {
+  document.getElementById("states").innerHTML = DATA.dimensions.map((d) => `
+    <article class="card state">
       <div class="score-top"><span class="score-name"><a href="#${d.key}">${esc(d.name)}</a></span><span class="score-label">${esc(d.label)}</span></div>
-      <div class="score-num">${d.score === null ? "—" : fmtSigned(d.score)}</div>
-      <div class="small muted">3 个月前 ${d.score_3m_ago === null ? "—" : fmtSigned(d.score_3m_ago)}${delta === null ? "" : "，变化 " + fmtSigned(delta)}</div>
-      <div class="meter" role="img" aria-label="评分 ${fmtSigned(d.score)}，范围 −2 到 +2"><i style="left:${meterPos(d.score)}%"></i></div>
-      <div class="spark"><canvas id="spark-${d.key}" aria-label="${esc(d.name)}评分历史"></canvas></div>
-      <div class="score-sum">${esc(d.summary || "")}</div>
-      <details><summary>构成与口径</summary><p class="small">${esc(d.desc)}</p><div class="comp">${comps || "<span>数据不足</span>"}</div></details>
-    </article>`;
-  }).join("");
-  document.getElementById("method").textContent = DATA.score_method;
-  drawSparks();
+      <div class="state-head">${esc(d.head)}</div>
+      <ul class="state-pts">${d.points.map((p) => `<li>${badge(p.level)} <span>${esc(p.text)}</span></li>`).join("")}</ul>
+      ${d.next.length ? `<div class="state-next"><span class="muted">接下来：</span>${d.next.map((n) =>
+        `<span>${esc(n.bj)} ${esc(n.title)}${n.forecast_text ? `（预期 ${esc(n.forecast_text)}）` : ""}</span>`).join("；")}</div>` : ""}
+    </article>`).join("");
+  document.getElementById("method").textContent = DATA.method;
 }
 
-function drawSparks() {
-  sparks.splice(0).forEach((c) => c.destroy());
-  const P = palette();
-  for (const d of DATA.dimensions) {
-    const cv = document.getElementById(`spark-${d.key}`);
-    if (!cv || !d.history.length) continue;
-    sparks.push(new Chart(cv, {
-      type: "line",
-      data: { datasets: [
-        { data: d.history.map(([t, v]) => ({ x: isoToMs(t), y: v })), borderColor: P.series[0], borderWidth: 1.5, pointRadius: 0, tension: 0 },
-      ] },
-      options: {
-        animation: false, responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false }, tooltip: {
-          intersect: false, mode: "nearest", axis: "x", displayColors: false,
-          backgroundColor: P.surface, titleColor: P.ink, bodyColor: P.ink2, borderColor: P.axis, borderWidth: 1,
-          callbacks: { title: (it) => new Date(it[0].parsed.x).toISOString().slice(0, 7), label: (it) => `评分 ${fmtSigned(it.parsed.y)}` },
-        } },
-        scales: {
-          x: { type: "time", display: false },
-          y: { display: true, min: -3, max: 3, grid: { color: (c) => (c.tick.value === 0 ? P.axis : "transparent"), drawTicks: false }, ticks: { display: false }, border: { display: false } },
-        },
-      },
-    }));
-  }
+// ---- 即将发布 ----
+const DIM_NAME = { growth: "增长", inflation: "通胀", liquidity: "流动性", fiscal: "财政", policy: "货币政策" };
+function renderUpcoming() {
+  const r = DATA.releases || { upcoming: [] };
+  const st = DATA.status || {};
+  const rows = r.upcoming.map((x) => `<tr>
+      <td>${esc(x.bj)}</td><td style="text-align:left">${esc(x.title)}${x.impact === "High" ? ' <span class="small muted">高影响</span>' : ""}<div class="small muted">${esc(x.ref || "")}</div></td>
+      <td>${esc(DIM_NAME[x.dim] || "—")}</td><td><b>${esc(x.forecast_text || "—")}</b></td><td>${esc(x.previous_text || "—")}</td>
+      <td style="text-align:left" class="small">${esc(x.nowcast_text || "")}</td></tr>`).join("");
+  document.getElementById("upcoming").innerHTML = rows
+    ? `<div class="table-wrap"><table class="data"><tr><th>北京时间</th><th style="text-align:left">指标</th><th>影响</th><th>预期</th><th>前值</th><th style="text-align:left">模型预测</th></tr>${rows}</table></div>`
+    : `<p class="small muted">${esc(st.calendar_error ? `日历这次没取到：${st.calendar_error}` : "未来几天没有重要发布。")}</p>`;
 }
 
-// ---- 第二层：核心指标 ----
-function trendHTML(t) {
-  if (!t) return `<span class="muted">—</span>`;
-  const arrow = t.dir === "up" ? "↑" : t.dir === "down" ? "↓" : "→";
-  return `<span>${arrow} ${esc(t.label)} ${esc(t.text)}</span>`;
-}
-
-function consHTML(c) {
+// ---- 核心指标 ----
+function changeHTML(c) {
   if (!c) return `<span class="muted">—</span>`;
-  const sup = c.surprise_text ? `<div class="small">意外 ${esc(c.surprise_text)}${c.verdict ? " · " + esc(c.verdict) : ""}</div>` : "";
-  return `<div>${esc(c.forecast_text)} <span class="muted small">${esc(c.source)}</span></div>${sup}`;
+  const arrow = c.dir === "up" ? "↑" : c.dir === "down" ? "↓" : "→";
+  return `<span>${arrow} ${esc(c.text)}</span><div class="small muted">${esc(c.label)} ${esc(c.base)}</div>`;
+}
+
+function nextHTML(s) {
+  const bits = [];
+  if (s.next) bits.push(`<div>${esc(s.next.bj)}${s.next.forecast_text ? ` · 预期 <b>${esc(s.next.forecast_text)}</b>` : ""}</div>`);
+  if (s.nowcast && s.nowcast.length) bits.push(`<div class="small">Nowcast ${s.nowcast.map((n) => `${esc(n.period)} ${fmtNum(n.value)}%`).join("、")}</div>`);
+  if (s.last_surprise && s.last_surprise.surprise_text) bits.push(`<div class="small muted">上次意外 ${esc(s.last_surprise.surprise_text)} · ${esc(s.last_surprise.verdict || "")}</div>`);
+  return bits.join("") || `<span class="muted">—</span>`;
 }
 
 function renderSignals() {
   const el = document.getElementById("signals");
-  const head = `<div class="sig sig-head"><span>指标</span><span>最新</span><span>预期 / 意外</span><span>前值</span><span>趋势</span><span>这意味着什么</span></div>`;
+  const head = `<div class="sig sig-head"><span>指标</span><span>最新</span><span>较上期</span><span>较一年前</span><span>下一次发布</span><span>这意味着什么</span></div>`;
   el.innerHTML = head + DATA.dimensions.map((d) => {
     const rows = (DATA.signals[d.key] || []).map((s) => `
       <div class="sig">
-        <span class="sig-name">${s.chart ? `<a href="#c-${esc(s.chart)}">${esc(s.name)}</a>` : esc(s.name)}</span>
-        <span class="sig-val"><b>${esc(s.text)}</b><small>${esc(s.unit)}</small><div class="small muted">${esc(s.date)}${s.pctile === null ? "" : ` · ${s.pctile}% 分位`}</div></span>
-        <span class="sig-cons"><i class="m-label">预期</i>${consHTML(s.consensus)}</span>
-        <span class="sig-prev"><i class="m-label">前值</i>${esc(s.prev_text ?? "—")}</span>
-        <span class="sig-trend"><i class="m-label">趋势</i>${trendHTML(s.trend)}</span>
+        <span class="sig-name">${s.chart ? `<a href="#c-${esc(s.chart)}">${esc(s.name)}</a>` : esc(s.name)}${s.cmp.note ? `<div class="small muted">变化${esc(s.cmp.note)}${s.cmp.now ? `（现 ${esc(s.cmp.now)}）` : ""}</div>` : ""}</span>
+        <span class="sig-val"><b>${esc(s.text)}</b><small>${esc(s.unit)}</small><div class="small muted">${esc(s.date)}${s.pctile === null ? "" : ` · 历史 ${s.pctile}% 分位`}</div></span>
+        <span class="sig-chg"><i class="m-label">较上期</i>${changeHTML(s.cmp.short)}</span>
+        <span class="sig-chg"><i class="m-label">较一年前</i>${changeHTML(s.cmp.long)}</span>
+        <span class="sig-cons"><i class="m-label">下一次发布</i>${nextHTML(s)}</span>
         <span class="sig-interp">${badge(s.level)} ${esc(s.interp)}</span>
       </div>`).join("");
     return `<div class="sig-dim"><a href="#${d.key}">${esc(d.name)}</a><span class="muted small">${esc(d.label)}</span></div>${rows}`;
   }).join("");
 }
 
-// ---- 第三层：数据发布 ----
+// ---- 最近发布 ----
 function renderReleases() {
-  const r = DATA.releases || { recent: [], upcoming: [], nowcast: [] };
+  const r = DATA.releases || { recent: [], nowcast: [] };
   const st = DATA.status || {};
   const recentRows = r.recent.map((x) => `<tr>
       <td>${esc(x.bj)}</td><td style="text-align:left">${esc(x.title)}<div class="small muted">${esc(x.ref || "")}</div></td>
       <td><b>${esc(x.actual_text ?? "—")}</b></td><td>${esc(x.forecast_text || "—")}</td>
       <td>${x.verdict ? `${x.dir === "pos" ? "↑" : x.dir === "neg" ? "↓" : "="} ${esc(x.verdict)}<div class="small muted">${esc(x.surprise_text)}</div>` : `<span class="muted">${esc(x.status || "无预期")}</span>`}</td>
       <td>${esc(x.previous_text || "—")}</td></tr>`).join("");
-  const upRows = r.upcoming.map((x) => `<tr>
-      <td>${esc(x.bj)}</td><td style="text-align:left">${esc(x.title)}${x.impact === "High" ? ' <span class="small muted">高影响</span>' : ""}</td>
-      <td>${esc(x.forecast_text || "—")}</td><td>${esc(x.previous_text || "—")}</td></tr>`).join("");
   const ncRows = r.nowcast.map((x) => `<tr><td style="text-align:left">${esc(x.measure)}</td><td>${esc(x.period)}</td>
       <td>${x.nowcast === "" ? "—" : fmtNum(+x.nowcast)}</td><td>${x.actual === "" ? "—" : fmtNum(+x.actual)}</td></tr>`).join("");
   const empty = (msg) => `<p class="small muted">${esc(msg)}</p>`;
   document.getElementById("releases").innerHTML = `
     <div class="card rel">
-      <h3>最近发布：实际 vs 预期</h3>
       <p class="small muted">近 30 天。实际值取 FRED 当前值（可能已修订），与发布前最后一次看到的市场一致预期比较。↑ 表示偏强或偏热。</p>
       ${recentRows ? `<div class="table-wrap"><table class="data"><tr><th>北京时间</th><th style="text-align:left">指标</th><th>实际</th><th>预期</th><th>判断</th><th>前值</th></tr>${recentRows}</table></div>`
-        : empty(st.calendar_events ? "近 30 天没有可对比的发布。" : "预期数据从本站上线后开始累积，下一次重要数据发布后这里会出现对比。")}
+        : empty("预期从 2026-09-28 开始累积，9/29 起的发布会陆续出现在这里。")}
     </div>
     <div class="card rel">
-      <h3>即将发布</h3>
-      <p class="small muted">未来 ${10} 天，预期来自 ForexFactory 公开日历。</p>
-      ${upRows ? `<div class="table-wrap"><table class="data"><tr><th>北京时间</th><th style="text-align:left">指标</th><th>预期</th><th>前值</th></tr>${upRows}</table></div>`
-        : empty(st.calendar_error ? `日历这次没取到：${st.calendar_error}` : "未来几天没有重要发布。")}
-      <h3 style="margin-top:16px">模型预测：克利夫兰联储通胀 Nowcast（同比 %）</h3>
+      <h3>克利夫兰联储通胀 Nowcast（同比 %）</h3>
+      <p class="small muted">模型预测，实际值出来后可以对照它准不准。</p>
       ${ncRows ? `<div class="table-wrap"><table class="data"><tr><th style="text-align:left">口径</th><th>期间</th><th>Nowcast</th><th>实际</th></tr>${ncRows}</table></div>`
         : empty(st.nowcast_error ? `这次没取到：${st.nowcast_error}` : "暂无数据。")}
     </div>`;
@@ -206,7 +180,7 @@ function renderSections() {
     const nMore = more.reduce((a, g) => a + g.charts.length, 0);
     return `<section class="dim" id="${s.key}">
       <h2>${esc(s.name)} <span class="score-label">${esc(dim.label || "")}</span></h2>
-      <p class="desc">${esc(dim.summary || dim.desc || "")}</p>
+      <p class="desc">${esc(dim.head || "")}</p>
       <div class="charts">${core.map((id) => chartCardHTML(DATA.charts[id])).join("")}</div>
       ${nMore ? `<details class="more"><summary>更多图表（${nMore} 张）</summary>
         ${more.map((g) => `<h3 class="group-title">${esc(g.name)}</h3><div class="charts">${g.charts.map((id) => chartCardHTML(DATA.charts[id])).join("")}</div>`).join("")}
@@ -251,7 +225,6 @@ function openTarget() {
 }
 
 function redrawAll() {
-  drawSparks();
   const s = rangeStartMs();
   charts.forEach((c, id) => {
     const cv = c.canvas;
@@ -296,7 +269,8 @@ async function main() {
   }
   document.getElementById("asof").textContent = `数据更新于 ${(DATA.status?.updated_at || DATA.asof).replace("T", " ").replace("Z", " UTC")}`;
   renderVerdict();
-  renderScores();
+  renderStates();
+  renderUpcoming();
   renderSignals();
   renderReleases();
   renderRange();

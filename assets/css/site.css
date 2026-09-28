@@ -224,3 +224,18 @@ h2.layer { font-size: 18px; margin: 30px 0 4px; }
 section.dim > h2 .score-label { font-size: 12.5px; font-weight: 400; vertical-align: middle; }
 details.more { margin-top: 12px; }
 details.more > summary { cursor: pointer; color: var(--accent); padding: 6px 0; }
+
+/* ---- 第三版：五维状态卡、分歧与风险、变化列 ---- */
+.states { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 8px; }
+.state { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.state-head { font-size: 15px; font-weight: 600; line-height: 1.45; }
+.state-pts { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; font-size: 12.5px; color: var(--ink-2); }
+.state-pts li { display: grid; grid-template-columns: auto 1fr; gap: 6px; align-items: baseline; }
+.state-next { font-size: 12px; color: var(--ink-2); border-top: 1px solid var(--grid); padding-top: 6px; margin-top: auto; }
+details.risks { margin-top: 12px; }
+details.risks > summary { cursor: pointer; font-weight: 600; font-size: 13.5px; }
+.risk-dim { margin-top: 10px; }
+.risk-name { font-size: 12px; color: var(--muted); margin-bottom: 2px; }
+.sig { grid-template-columns: 1.25fr .95fr .8fr .8fr 1.15fr 2.4fr; }
+#upcoming { padding: 10px 16px; }
+@media (max-width: 900px) { .sig { grid-template-columns: 1fr 1fr; } }
