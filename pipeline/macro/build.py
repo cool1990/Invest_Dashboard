@@ -862,7 +862,7 @@ class MacroBuilder:
     def build(self) -> dict:
         dims = [("growth", "增长", self.growth), ("inflation", "通胀", self.inflation),
                 ("liquidity", "流动性", self.liquidity), ("fiscal", "财政", self.fiscal),
-                ("policy", "货币政策", self.policy)]
+                ("policy", "货币", self.policy)]
         built = [(key, name, *fn()) for key, name, fn in dims]
         self.states = {key: st for key, _, _, _, st in built}
         self.scen = Scenario(self)

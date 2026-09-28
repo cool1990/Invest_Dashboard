@@ -58,11 +58,13 @@ function renderStateLog() {
       <span class="small muted">${esc(r.trigger || "当天没有匹配到发布，可能是数据修订或市场变量变化")}</span></li>`).join("")}</ul>`;
 }
 
+// 五个维度一行一个：名字 | 一句话 | 标签（靠右），每行格式一样
 function renderStates() {
   document.getElementById("states").innerHTML = DATA.dimensions.map((d) => `
-    <a class="card state" href="#${d.key}">
-      <div class="score-top"><span class="score-name">${esc(d.name)}</span><span class="score-label">${esc(d.label)}</span></div>
-      <div class="state-head">${esc(d.head)}</div>
+    <a class="st-row" href="#${d.key}">
+      <span class="st-name">${esc(d.name)}</span>
+      <span class="st-head">${esc(d.head)}</span>
+      <span class="st-label tag-state">${esc(d.label)}</span>
     </a>`).join("");
 }
 
@@ -96,25 +98,43 @@ function nowcastHTML() {
 }
 
 // ---- 第三层：时间 ----
+// 即将发布：放在第一屏右边，按北京时间的日期分组；可能改写标签的那几期可以展开看情景
+const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 function renderUpcoming() {
   const r = DATA.releases || { upcoming: [] };
   const st = DATA.status || {};
-  const scen = (sc) => `<tr class="scen"><td colspan="4">
-      <details><summary>可能改写「${sc.affects.map(esc).join("」「")}」：看新值落在哪个范围</summary>
+  const el = document.getElementById("upcoming");
+  if (!r.upcoming.length) {
+    el.innerHTML = `<p class="small muted">${esc(st.calendar_error ? `日历这次没取到：${st.calendar_error}` : "未来几天没有重要发布。")}</p>`;
+    return;
+  }
+  const scen = (sc) => `<details class="scen">
+      <summary>可能改写「${sc.affects.map(esc).join("」「")}」</summary>
       <div class="small muted">现在：${esc(sc.current)}</div>
       <ul class="scen-list">${sc.segments.map((g) => `<li class="${g.changed ? "chg" : ""}${g.forecast ? " fc" : ""}">
-        <span class="scen-rng">新值 ${esc(g.range)}</span>
-        <span>${g.changed ? "<b>" + esc(g.result) + "</b>" : esc(g.result)}${g.detail ? `<span class="small muted">（${esc(g.detail)}）</span>` : ""}${g.forecast ? ' <span class="fc-tag">← 预期在这里</span>' : ""}</span>
-      </li>`).join("")}</ul></details></td></tr>`;
-  const rows = r.upcoming.map((x) => {
-    const sc = x.scenario && x.scenario.affects && x.scenario.affects.length ? x.scenario : null;
-    return `<tr class="${sc ? "has-scen" : ""}">
-      <td>${esc(x.bj)}</td><td>${esc(x.title)}${x.ref ? ` <span class="small muted">${esc(x.ref)}</span>` : ""}</td>
-      <td><b>${esc(x.forecast_text || "—")}</b></td><td>${esc(x.previous_text || "—")}</td></tr>${sc ? scen(sc) : ""}`;
+        <span class="scen-rng">新值 ${esc(g.range)}${g.forecast ? ' <span class="fc-tag">← 预期</span>' : ""}</span>
+        <span>${g.changed ? "<b>" + esc(g.result) + "</b>" : esc(g.result)}${g.detail ? `<span class="small muted">（${esc(g.detail)}）</span>` : ""}</span>
+      </li>`).join("")}</ul></details>`;
+  const days = new Map();
+  for (const x of r.upcoming) {
+    const [md, hm] = (x.bj || "").split(" ");
+    if (!days.has(md)) days.set(md, []);
+    days.get(md).push({ ...x, hm });
+  }
+  const year = (DATA.asof || "").slice(0, 4);
+  el.innerHTML = [...days.entries()].map(([md, xs]) => {
+    const wd = new Date(`${year}-${md}T00:00:00Z`).getUTCDay();
+    return `<div class="up-day">${esc(md)}<span>周${WEEK[wd] ?? ""}</span></div>
+      <ul class="up-list">${xs.map((x) => {
+        const sc = x.scenario && x.scenario.affects && x.scenario.affects.length ? x.scenario : null;
+        return `<li class="${x.impact === "High" ? "hi" : ""}">
+          <span class="up-time">${esc(x.hm || "")}</span>
+          <span class="up-title">${esc(x.title)}${x.ref ? `<small>${esc(x.ref)}</small>` : ""}</span>
+          <span class="up-num"><b>${esc(x.forecast_text || "—")}</b><small>前值 ${esc(x.previous_text || "—")}</small></span>
+          ${sc ? scen(sc) : ""}
+        </li>`;
+      }).join("")}</ul>`;
   }).join("");
-  document.getElementById("upcoming").innerHTML = rows
-    ? `<div class="table-wrap"><table class="data upc"><tr><th>北京时间</th><th>指标</th><th>预期</th><th>前值</th></tr>${rows}</table></div>`
-    : `<p class="small muted">${esc(st.calendar_error ? `日历这次没取到：${st.calendar_error}` : "未来几天没有重要发布。")}</p>`;
 }
 
 // 最近发布：还没有累积数据时整段不显示
@@ -168,7 +188,7 @@ function renderSections() {
       .filter((g) => g.charts.length);
     const nMore = more.reduce((a, g) => a + g.charts.length, 0);
     return `<section class="dim" id="${s.key}">
-      <h2>${esc(s.name)}</h2>
+      <h2>${esc(s.name)}<span class="tag-state">${esc(dim.label || "")}</span></h2>
       ${metricsHTML(dim)}
       ${s.key === "inflation" ? nowcastHTML() : ""}
       <div class="charts">${core.map((id) => chartCardHTML(DATA.charts[id])).join("")}</div>

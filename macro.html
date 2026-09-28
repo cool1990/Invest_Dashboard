@@ -18,14 +18,23 @@
     <div class="page-head">
       <div>
         <h1>美国宏观</h1>
-        <div class="sub">增长 · 通胀 · 流动性 · 财政 · 货币政策 <span class="muted small" id="asof"></span></div>
+        <div class="sub">增长 · 通胀 · 流动性 · 财政 · 货币 <span class="muted small" id="asof"></span></div>
       </div>
     </div>
 
-    <!-- 第一层：结论 -->
-    <section class="card verdict" id="verdict"></section>
-    <section class="card statelog" id="statelog" hidden></section>
-    <div class="states" id="states"></div>
+    <!-- 第一屏：左边结论，右边即将发布 -->
+    <div class="top">
+      <div class="top-main">
+        <section class="card verdict" id="verdict"></section>
+        <section class="card statelog" id="statelog" hidden></section>
+        <section class="card states" id="states" aria-label="五个维度"></section>
+      </div>
+      <aside class="card side" aria-labelledby="up-title">
+        <h2 id="up-title">即将发布</h2>
+        <p class="small muted">未来 10 天，北京时间；预期来自 ForexFactory 公开日历。</p>
+        <div id="upcoming"></div>
+      </aside>
+    </div>
 
     <!-- 第二层：五个问题各自的依据 -->
     <h2 class="layer">依据</h2>
@@ -36,11 +45,7 @@
     </div>
     <div id="sections"></div>
 
-    <!-- 第三层：时间 -->
-    <h2 class="layer">即将发布</h2>
-    <p class="layer-sub">未来 10 天的重要数据，预期来自 ForexFactory 公开日历。</p>
-    <div class="card rel" id="upcoming"></div>
-
+    <!-- 最近发布：有数据之后才出现 -->
     <div id="recent-wrap" hidden>
       <h2 class="layer">最近发布：实际 vs 预期</h2>
       <p class="layer-sub">近 30 天。实际值取 FRED 当前值（可能已修订），与发布前最后一次看到的市场一致预期比较，↑ 表示偏强或偏热。「对判断的影响」是去掉这一期和加上这一期各按规则算一次的差别；「市场反应」是发布当天 2 年期国债的变化和年底 EFFR 隐含值在发布前后的变化。</p>
