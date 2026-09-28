@@ -424,6 +424,80 @@ def confirm_text(cycle: str, trend: str) -> str:
     return f"价格尚未确认，收盘在 200 日均线{side}"
 
 
+def _note(why: str, hi: bool = False) -> dict:
+    return {"mark": "注意", "why": why, "hi": hi}
+
+
+def watch_reasons(key: str, v: dict) -> dict[str, dict]:
+    """侧栏里要打标记的数。只标偏离中间带的，理由用同一套锚点，不另设阈值。
+
+    hi 为真的是会把顶部结论往风险那边改、或情绪已经到极端的。中间带（成本附近、持有、
+    杠杆中性、现货平淡、趋势中性、结构稳定、恐贪的恐惧到贪婪）不标记。
+    """
+    out: dict[str, dict] = {}
+    if key == "valuation":
+        lab = valuation_label(v.get("mvrv"))
+        if lab == "低于成本":
+            out["mvrv"] = _note("价格低于全体持有者成本，周期往出清这边看", hi=True)
+        elif lab == "过热":
+            out["mvrv"] = _note("估值过热，接着看长线持有者有没有在派发", hi=True)
+        elif lab == "盈利扩张":
+            out["mvrv"] = _note("持有者已经有盈利，高于 2.4 才算过热")
+    elif key == "holders":
+        lab = holder_state(v)["label"]
+        if lab == "投降":
+            out["sth"] = _note("价格低于短线成本，近期买入的人整体亏损", hi=True)
+            out["sopr7"] = _note("长线持有者在亏损卖出", hi=True)
+        elif lab == "派发":
+            out["supply_30d"] = _note("1 年以上的供给在下降", hi=True)
+            out["sopr7"] = _note("长线持有者在盈利卖出", hi=True)
+        elif lab == "吸筹":
+            out["supply_30d"] = _note("1 年以上的供给在增加，周期按吸筹来写")
+    elif key == "leverage":
+        funding, oi = v.get("funding7"), v.get("oi_30d")
+        if oi is not None and oi < OI_DOWN:
+            out["oi_30d"] = _note("未平仓明显下降，资金会写成出清", hi=True)
+        elif oi is not None and oi > OI_UP:
+            out["oi_30d"] = _note("杠杆在加，费率还没到拥挤")
+        if funding is not None and funding > FUND_HOT:
+            out["funding7"] = _note("多头在付偏高的资金费，现货流入也会被写成资金拥挤", hi=True)
+        elif funding is not None and funding < FUND_SHORT:
+            out["funding7"] = _note("空头在付资金费", hi=True)
+    elif key == "spot":
+        ev = etf_vote(v.get("etf_usd"), v.get("issuance_usd"))
+        if ev == 1:
+            out["etf_20d"] = _note("20 个交易日净流入超过了同期新产出的比特币")
+        elif ev == -1:
+            out["etf_20d"] = _note("净流出已经超过同期新产出的比特币", hi=True)
+        sv = stable_vote(v.get("stable_30d"))
+        if sv == 1:
+            out["stable_30d"] = _note("稳定币流通量在扩张")
+        elif sv == -1:
+            out["stable_30d"] = _note("稳定币流通量在收缩", hi=True)
+    elif key == "trend":
+        lab = trend_state(v)["label"]
+        if lab == "上升趋势":
+            out["ma_dist"] = _note("收盘在 200 日均线上方，只用来确认周期，不改周期名字")
+        elif lab == "下降趋势":
+            out["ma_dist"] = _note("收盘在 200 日均线下方，只用来确认周期，不改周期名字", hi=True)
+    elif key == "breadth":
+        lab = breadth_state(v)["label"]
+        if lab == "比特币独强":
+            out["dom_30d"] = _note("风险偏好停在比特币，还没有扩散出去")
+        elif lab == "扩散":
+            out["dom_30d"] = _note("风险偏好已经从比特币扩散出去")
+        elif lab == "分化":
+            out["dom_30d"] = _note("主导率和以太坊相对比特币的方向不一致", hi=True)
+            out["eth_30d"] = _note("以太坊相对比特币的方向和主导率相反", hi=True)
+    elif key == "sentiment":
+        lab = fear_greed_label(v.get("fng"))
+        if lab == "极度恐惧":
+            out["fng"] = _note("情绪到了极度恐惧。这是参考，不进顶部判断", hi=True)
+        elif lab == "极度贪婪":
+            out["fng"] = _note("情绪到了极度贪婪。这是参考，不进顶部判断", hi=True)
+    return out
+
+
 def environment(valuation: str, holder: str, spot: str, leverage: str, etf_side: int | None,
                 trend: str, breadth: str, eth_word: str | None) -> dict:
     cycle = cycle_name(valuation, holder)

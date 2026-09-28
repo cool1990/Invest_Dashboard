@@ -204,6 +204,17 @@ details.why { grid-column: 2 / -1; font-size: 12.5px; }
 details.why > summary { cursor: pointer; color: var(--accent); }
 details.why p { margin: 4px 0 0; line-height: 1.55; color: var(--ink-2); }
 .side-h2 { margin-top: 18px; }
+.read-dim { margin: 14px 0 0; font-size: 12px; font-weight: 600; color: var(--muted); }
+.reads { list-style: none; margin: 0; padding: 0; }
+.reads li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 12px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--grid); font-size: 13px; }
+.reads li:last-child { border-bottom: 0; }
+.reads .up-title { color: var(--ink-2); }
+.reads li.hi .up-title { color: var(--ink); font-weight: 500; }
+.reads .up-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.reads .up-num small { display: block; color: var(--muted); font-size: 11.5px; font-weight: 400; }
+.read-chg { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; color: var(--muted); font-size: 12px; }
+.read-chg .small { display: inline; }
+.read-why { grid-column: 1 / -1; margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
 .rule { margin-top: 12px; }
 
 /* ---- 其他层 ---- */
@@ -226,6 +237,7 @@ section.dim > h2 { margin-bottom: 10px; display: flex; justify-content: space-be
 .ev-val small { color: var(--muted); margin-left: 3px; }
 .ev-anchor { color: var(--ink-2); font-size: 13px; }
 .tag { font-size: 11px; color: var(--st-watch); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; font-weight: 400; white-space: nowrap; }
+.tag-alert { color: var(--st-alert); }
 .tag-ref { color: var(--muted); }
 .m-label { display: none; font-style: normal; color: var(--muted); font-size: 11.5px; margin-right: 4px; }
 @media (max-width: 760px) {
