@@ -104,7 +104,7 @@ function nowcastHTML() {
 }
 
 // ---- 第三层：时间 ----
-// 即将发布：放在第一屏右边，按北京时间的日期分组；可能改写标签的那几期可以展开看情景
+// 即将发布：放在第一屏右边，按北京时间的日期分组；进了规则的那几期下面一行写对判断的影响
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
 function renderUpcoming() {
   const r = DATA.releases || { upcoming: [] };
@@ -114,13 +114,8 @@ function renderUpcoming() {
     el.innerHTML = `<p class="small muted">${esc(st.calendar_error ? `日历这次没取到：${st.calendar_error}` : "未来几天没有重要发布。")}</p>`;
     return;
   }
-  const scen = (sc) => `<details class="scen">
-      <summary>可能改写「${sc.affects.map(esc).join("」「")}」</summary>
-      <div class="small muted">现在：${esc(sc.current)}</div>
-      <ul class="scen-list">${sc.segments.map((g) => `<li class="${g.changed ? "chg" : ""}${g.forecast ? " fc" : ""}">
-        <span class="scen-rng">新值 ${esc(g.range)}${g.forecast ? ' <span class="fc-tag">← 预期</span>' : ""}</span>
-        <span>${g.changed ? "<b>" + esc(g.result) + "</b>" : esc(g.result)}${g.detail ? `<span class="small muted">（${esc(g.detail)}）</span>` : ""}</span>
-      </li>`).join("")}</ul></details>`;
+  // 进了规则的指标下面一行：预期落在哪、哪个标签会变；没有情景的只留时间和预期
+  const scen = (sc) => `<div class="scen${sc.changed ? " chg" : ""}">${esc(sc.text)}</div>`;
   const days = new Map();
   for (const x of r.upcoming) {
     const [md, hm] = (x.bj || "").split(" ");
@@ -132,7 +127,7 @@ function renderUpcoming() {
     const wd = new Date(`${year}-${md}T00:00:00Z`).getUTCDay();
     return `<div class="up-day">${esc(md)}<span>周${WEEK[wd] ?? ""}</span></div>
       <ul class="up-list">${xs.map((x) => {
-        const sc = x.scenario && x.scenario.affects && x.scenario.affects.length ? x.scenario : null;
+        const sc = x.scenario && x.scenario.text ? x.scenario : null;
         return `<li class="${x.impact === "High" ? "hi" : ""}">
           <span class="up-time">${esc(x.hm || "")}</span>
           <span class="up-title">${esc(x.title)}${x.ref ? `<small>${esc(x.ref)}</small>` : ""}</span>

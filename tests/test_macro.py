@@ -226,7 +226,8 @@ class ScenarioTest(unittest.TestCase):
             level += {len(ms) - 2: 21, len(ms) - 1: 162}.get(i, 30)
             pay.append((d, level))
         self.raw = {"PAYEMS": pay, "UNRATE": [(d, 4.1) for d in ms], "GDPC1": [], "GDPNOW": [(date(2026, 7, 1), 5.0)],
-                    "PCEPILFE": [(d, 100 * 1.0028 ** i) for i, d in enumerate(ms)]}
+                    # 核心 PCE 比非农晚一个月：8 月的还没公布
+                    "PCEPILFE": [(d, 100 * 1.0028 ** i) for i, d in enumerate(ms[:-1])]}
         self.events = [
             {"release_at": "2026-10-02T08:30:00-04:00", "title": "Non-Farm Employment Change", "impact": "High",
              "forecast": "98K", "previous": "162K"},
@@ -238,24 +239,29 @@ class ScenarioTest(unittest.TestCase):
     def test_nfp_thresholds(self):
         dash = build_dashboard(self.raw, [], date(2026, 9, 28), self.events, [], self.now)
         up = {r["key"]: r for r in dash["releases"]["upcoming"]}
-        segs = up["nfp"]["scenario"]["segments"]
-        # 新 3 个月均值 = (21 + 162 + X) / 3：X ≥ 267 时 ≥ 150（强），X ≤ −34 时 < 50（疲弱），
-        # X ≤ −184 时 < 0（恶化）
-        self.assertEqual([g["range"] for g in segs], ["≤ -184K", "-183K ~ -34K", "-33K ~ 266K", "≥ 267K"])
-        self.assertTrue(segs[2]["forecast"])
-        self.assertEqual(up["nfp"]["scenario"]["affects"][0], "就业")
-        self.assertIn("就业变为「强」", segs[3]["result"])
-        self.assertIn("就业变为「疲弱」", segs[1]["result"])
-        self.assertIn("就业变为「恶化」", segs[0]["result"])
+        sc = up["nfp"]["scenario"]
+        # 新 3 个月均值 = (21 + 162 + X) / 3：X ≥ 267 时 ≥ 150（强），X ≤ −34 时 < 50（疲弱）；
+        # 只留预期两侧最近的门槛，更远的「恶化」（X ≤ −184）不写，3 个月均值的区间也不写
+        self.assertEqual(sc["affects"][0], "就业")
+        self.assertFalse(sc["changed"])
+        self.assertTrue(sc["text"].startswith("预期 98K，就业仍为「降温」；≥ 267K 变为「强」，增长变为「扩张偏强」"))
+        self.assertIn("；≤ −34K 变为「疲弱」", sc["text"])
+        self.assertNotIn("恶化", sc["text"])
+        self.assertNotIn("均值", sc["text"])
 
     def test_core_pce_levels(self):
         dash = build_dashboard(self.raw, [], date(2026, 9, 28), self.events, [], self.now)
         up = {r["key"]: r for r in dash["releases"]["upcoming"]}
-        segs = up["core_pce_mom"]["scenario"]["segments"]
-        fc = [g for g in segs if g["forecast"]]
-        self.assertEqual(len(fc), 1)
-        # 每月 0.28% 已是折年 3.4%：0.3% 的预期维持「警示」
-        self.assertEqual(fc[0]["result"], "判断不变")
+        # 环比本身没有标签，只写会不会改通胀和整体环境
+        self.assertEqual(up["core_pce_mom"]["scenario"]["text"], "预期 0.3%，通胀仍为「偏热」，整体环境不变")
+
+    def test_revision_has_no_scenario(self):
+        # 已经公布过的期间（例如 GDP 终值）只是修订：日历上只留时间和预期
+        raw = dict(self.raw)
+        raw["PCEPILFE"] = [(d, 100 * 1.0028 ** i) for i, d in enumerate(months(date(2024, 1, 1), 32))]
+        dash = build_dashboard(raw, [], date(2026, 9, 28), self.events, [], self.now)
+        up = {r["key"]: r for r in dash["releases"]["upcoming"]}
+        self.assertNotIn("scenario", up["core_pce_mom"])
 
     def test_impact_after_release(self):
         from datetime import datetime, timezone
@@ -299,22 +305,26 @@ class InterpretTest(unittest.TestCase):
         dragged = I.growth_state({"gdp_q": 0.8, "core_gdp": 2.1, "nfp3": 71,
                                   "contrib": {"pce": 1.3, "fixed": 0.4, "inv": 0.3, "gov": 0.2, "nx": -1.4}})
         self.assertEqual(dragged["output"], "接近潜在")
-        self.assertEqual(dragged["why"][0]["t"], "核心 GDP（消费 + 固定投资）2.1%，接近约 2% 的潜在增速；"
-                                                 "GDP 总量只有 0.8%，主要是净出口拖累 1.4 个百分点，不代表内需弱")
+        # 总量和各项贡献并列写出，拉高的在前、拖累的在后
+        self.assertEqual(dragged["why"][0]["t"], "核心 GDP 2.1%，接近约 2% 的潜在增速；"
+                                                 "总量 0.8%，消费贡献 +1.3、固定投资 +0.4，库存 +0.3、政府 +0.2、净出口 −1.4")
         self.assertIn("以核心为准", dragged["anchors"]["gdp_q"])
         # 反过来：库存把总量抬高，核心需求其实偏弱
         lifted = I.growth_state({"gdp_q": 2.6, "core_gdp": 1.0, "nfp3": 71,
                                  "contrib": {"inv": 1.1, "nx": 0.5, "gov": -0.2}})
         self.assertEqual(lifted["output"], "低于潜在")
-        self.assertIn("库存拉高 1.1 个百分点", lifted["head"])
+        self.assertIn("总量 2.6%，库存 +1.1、净出口 +0.5、政府 −0.2", lifted["head"])
         # 分档相同时不加注
         same = I.growth_state({"gdp_q": 1.6, "core_gdp": 2.2, "nfp3": 71})
-        self.assertNotIn("GDP 总量", same["head"])
+        self.assertNotIn("拖累", same["head"])
         # 分化时标签写「分化」，理由里分别写产出和就业，不再重复「分化」
         split = I.growth_state({"gdp_q": 1.5, "core_gdp": 4.2, "nfp3": 71})
         self.assertEqual(split["label"], "分化")
         self.assertNotIn("分化", split["head"])
         self.assertEqual(split["summary"], "产出偏强，但就业降温")
+        # 分化时顶部标题用增长那句，不写「增长大致在潜在水平」
+        env = I.environment(split, I.inflation_state({"core_yoy": 3.34}), {}, {})
+        self.assertEqual(env["head"], "通胀粘性：产出偏强，但就业降温，通胀仍高于目标")
         weak = I.growth_state({"gdpnow": 0.3, "gdp_q": 0.8, "nfp3": -20, "unrate_chg12": 0.6, "sahm": 0.6})
         self.assertEqual(weak["label"], "收缩风险")
 
@@ -401,7 +411,7 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual([x["id"] for x in g["metrics"]][:2], ["core_gdp", "gdp_q"])
         self.assertEqual((m["core_gdp"]["text"], m["core_gdp"]["date"]), ("2.2", "2026Q2"))
         self.assertEqual(m["gdp_q"]["note"], "贡献：消费 +1.4，净出口 -1.3")
-        self.assertIn("GDP 总量只有 0.8%，主要是净出口拖累 1.3 个百分点", g["why"][0]["t"])
+        self.assertIn("总量 0.8%，消费贡献 +1.4，净出口 −1.3", g["why"][0]["t"])
         self.assertIn("gdp_contrib", dash["charts"])
 
     def test_nfp_row_uses_3m_average(self):

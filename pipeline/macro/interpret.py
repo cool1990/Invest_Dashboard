@@ -114,6 +114,21 @@ def gap_driver(gdp: float, core: float, contrib: dict) -> str:
     return f"{name}{'拉高' if c > 0 else '拖累'} {abs(c):.1f} 个百分点"
 
 
+CORE_PARTS = (("pce", "消费"), ("fixed", "固定投资"))
+
+
+def contrib_text(contrib: dict) -> str:
+    """「消费贡献 +2.3、固定投资 +1.2，净出口 −1.1、库存 −0.7、政府 −0.2」：
+    先写核心两项，再写其余几项，同号的按大小排，拉高的在前、拖累的在后。"""
+    sign = lambda c: f"{c:+.1f}".replace("-", "−")  # noqa: E731
+    core = [(n, contrib[k]) for k, n in CORE_PARTS if contrib.get(k) is not None]
+    rest = sorted(((n, contrib[k]) for k, n in NOISE if contrib.get(k) is not None),
+                  key=lambda p: (p[1] < 0, -abs(p[1])))
+    groups = ["、".join(f"{n}{'贡献' if i == 0 and g is core else ''} {sign(c)}" for i, (n, c) in enumerate(g))
+              for g in (core, rest) if g]
+    return "，".join(groups)
+
+
 def growth_state(v: dict) -> dict:
     now, last, core = v.get("gdpnow"), v.get("gdp_q"), v.get("core_gdp")
     contrib = v.get("contrib") or {}
@@ -129,13 +144,12 @@ def growth_state(v: dict) -> dict:
     if o is None:
         o_why = ""
     elif core is not None:
-        o_why = f"核心 GDP（消费 + 固定投资）{round(core, 1):.1f}%，{VS_POTENTIAL[o_txt]}约 2% 的潜在增速"
+        # 核心 GDP 是消费 + 固定投资自己的增速，不是总量加回净出口；总量和各项贡献并列写出，不挑一项当原因
+        o_why = f"核心 GDP {round(core, 1):.1f}%，{VS_POTENTIAL[o_txt]}约 2% 的潜在增速"
+        if last is not None:
+            o_why += f"；总量 {round(last, 1):.1f}%" + (f"，{mix}" if (mix := contrib_text(contrib)) else "")
         if differs:
             driver = gap_driver(last, core, contrib)
-            lo = last < core
-            o_why += (f"；GDP 总量{'只有' if lo else '达到'} {round(last, 1):.1f}%，"
-                      + (f"主要是{driver}" if driver else "差在净出口、库存或政府")
-                      + f"，不代表内需{'弱' if lo else '强'}")
     elif by_model:
         o_why = f"还没有上季 GDP，暂按 GDPNow 模型预测 {round(now, 1):.1f}%，{VS_POTENTIAL[o_txt]}约 2% 的潜在增速"
     else:
@@ -402,6 +416,9 @@ def environment(g: dict, i: dict, p: dict, liq: dict, f: dict | None = None) -> 
     if gl is None or il is None:
         return {"name": "数据不足", "head": "数据不足", "lines": []}
     name, meaning = REGIMES[(gl, il)]
+    if g.get("split") and g.get("summary"):
+        # 分化时档位取了较弱的一侧，「增长大致在潜在水平」会把强的那一侧抹平；直接用增长那句
+        meaning = g["summary"] + "，" + meaning.split("，", 1)[1]
     econ = "；".join(x for x in (g.get("summary"), i.get("summary")) if x)
     lines = [{"k": k, "t": t} for k, t in (
         ("经济", econ), ("流动性", liq.get("summary")), ("财政", (f or {}).get("summary")), ("货币", p.get("summary")),
