@@ -164,16 +164,20 @@ function chartCardHTML(spec) {
 
 function renderSections() {
   const root = document.getElementById("sections");
-  document.getElementById("chips").innerHTML = DATA.sections.map((s) => `<a href="#${s.key}">${esc(s.name)}</a>`).join("");
-  root.innerHTML = DATA.sections.map((s) => {
+  // 带 side 的板块（半导体：需求端 / 供给端）按边分组，每组前面加一个小标题
+  document.getElementById("chips").innerHTML = DATA.sections.map((s, i) =>
+    `${s.side && s.side !== DATA.sections[i - 1]?.side ? `<span class="chip-side">${esc(s.side)}</span>` : ""}<a href="#${s.key}">${esc(s.name)}</a>`).join("");
+  root.innerHTML = DATA.sections.map((s, i) => {
     const dim = DATA.dimensions.find((d) => d.key === s.key) || {};
     const all = s.groups.flatMap((g) => g.charts);
     const core = all.filter((id) => DATA.charts[id].core);
     const more = s.groups.map((g) => ({ name: g.name, charts: g.charts.filter((id) => !DATA.charts[id].core) }))
       .filter((g) => g.charts.length);
     const nMore = more.reduce((a, g) => a + g.charts.length, 0);
-    return `<section class="dim" id="${s.key}">
+    const side = s.side && s.side !== DATA.sections[i - 1]?.side ? `<h2 class="side-title">${esc(s.side)}</h2>` : "";
+    return `${side}<section class="dim" id="${s.key}">
       <h2>${esc(s.name)}<span class="tag-state">${esc(dim.label || "")}</span></h2>
+      ${dim.vote ? `<p class="dim-vote small">投<b>${esc(dim.vote)}</b>：${esc(dim.vote_why || "")}</p>` : ""}
       ${metricsHTML(dim)}
       ${sectionExtra(s.key)}
       <div class="charts">${core.map((id) => chartCardHTML(DATA.charts[id])).join("")}</div>

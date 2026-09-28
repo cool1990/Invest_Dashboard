@@ -1,4 +1,4 @@
-"""规则：半导体供需五个维度的状态、整体景气位置、分环节状态、观察清单。
+"""规则：半导体供需五个维度的状态、整体景气位置、观察清单。
 
 需求端：AI 算力、传统终端；供给端：产能、库存、价格。
 
@@ -337,25 +337,6 @@ def position(ai: dict, trad: dict, inv: dict, price: dict, cap: dict) -> dict:
     tally = "、".join(f"{k} {counts[k]} 票" for k in STAGES if counts[k])
     return {**base, "stage": stage, "name": name, "votes": votes, "counts": counts,
             "head": f"半导体整体处于{name}", "meaning": STAGE_MEANING[name], "tally": tally}
-
-
-# ---------------------------------------------------------------------------
-# 分环节：每个环节用一个主指标的同比及其变化定状态
-
-SEG_ACCEL = 0.0  # 同比比上期抬升多少算「在抬升」（个百分点）
-
-
-def segment_state(yoy: float | None, prev: float | None) -> str:
-    if yoy is None:
-        return "数据不足"
-    rising = prev is not None and yoy - prev > SEG_ACCEL
-    if yoy >= 0:
-        if prev is None:
-            return "上行"
-        return "上行加速" if rising else "上行放缓"
-    if prev is None:
-        return "下行"
-    return "触底回升" if rising else "下行"
 
 
 # 观察清单：最能改变位置判断的几个数。up = 上行时出现什么说明见顶或转下行；down = 下行时出现什么说明见底

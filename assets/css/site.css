@@ -268,9 +268,13 @@ body[data-board="semis"] .v-lines li { grid-template-columns: 72px minmax(0, 1fr
 .v-meaning { margin: 6px 0 0; color: var(--ink-2); font-size: 14.5px; line-height: 1.6; }
 .v-split { margin: 4px 0 0; color: var(--st-watch); }
 .sub-h { font-size: 15px; margin: 18px 0 6px; }
-.seg-card .sub-h, .watch-card .sub-h { margin-top: 0; }
-.seg-card, .watch-card { padding: 16px 20px; }
-.seg-card > p { margin: 0 0 8px; }
+.why-card .sub-h, .watch-card .sub-h { margin-top: 0; }
+.why-card, .watch-card { padding: 16px 20px; }
+.why-card > p { margin: 0 0 4px; }
+/* 指标详解按需求端 / 供给端分组 */
+.side-title { font-size: 17px; margin: 28px 0 4px; padding-bottom: 6px; border-bottom: 2px solid var(--grid); }
+.chip-side { font-size: 12px; font-weight: 600; color: var(--ink-2); align-self: center; margin-left: 4px; }
+.dim-vote { margin: -4px 0 10px; color: var(--ink-2); }
 /* 为什么：供需五个维度 */
 .sd-side { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-top: 10px; padding-bottom: 4px; border-bottom: 1px solid var(--grid); }
 .sd-row { display: grid; grid-template-columns: 72px 84px 52px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--grid); color: inherit; font-size: 13.5px; line-height: 1.55; }
@@ -279,24 +283,6 @@ body[data-board="semis"] .v-lines li { grid-template-columns: 72px minmax(0, 1fr
 .sd-vote { font-weight: 600; color: var(--ink-2); white-space: nowrap; }
 .sd-why { color: var(--ink-2); }
 .sd-foot { margin: 8px 0 0; color: var(--ink-2); }
-/* 分环节 */
-.sg-block { padding: 12px 0; border-top: 1px solid var(--grid); }
-.sg-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
-.sg-name { font-weight: 600; font-size: 14.5px; }
-.sg-state { font-weight: 600; white-space: nowrap; }
-.sg-state.up { color: var(--st-ok); }
-.sg-state.down { color: var(--st-alert); }
-.sg-state.turn { color: var(--st-watch); }
-.sg-what { margin-top: 2px; }
-.sg-lead { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
-.tag-lead { color: var(--accent); margin-right: 4px; }
-table.co { margin-top: 8px; font-size: 13px; table-layout: fixed; }
-table.co th:nth-child(1) { width: 28%; }
-table.co td:first-child small { display: block; color: var(--muted); font-size: 11.5px; }
-table.co th { font-weight: 400; color: var(--muted); }
-table.co td small { display: block; color: var(--muted); font-size: 11.5px; }
-table.co td b { font-weight: 500; }
-.sg-foot { margin: 10px 0 0; }
 /* 后续关注 */
 .watch-card > p { margin: 0 0 6px; }
 .wl { list-style: none; margin: 0; padding: 0; }

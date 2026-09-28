@@ -1,7 +1,7 @@
 """把各来源整理成 data/semis/dashboard.json。结构和宏观页相同，另加 position（景气位置）。
 
 - 结论：position（半导体整体：上行 / 下行 / 震荡 × 早期 / 中期 / 后期，五个维度的投票，观察清单）、
-  dimensions（需求端 AI 算力、传统终端，供给端产能、库存、价格）、segments（分环节状态）。
+  dimensions（需求端 AI 算力、传统终端，供给端产能、库存、价格；每个维度投一票，验证整体阶段）。
 - 依据：dimensions 的 metrics（每个指标附 about：判断什么、怎么判断、为什么有效）和 sections + charts。
 - 时间：releases.upcoming（旧站日历里的半导体条目与云厂商财报，附星级）。
 
@@ -236,6 +236,10 @@ class SemisBuilder:
         if eps_ai:
             v["eps_ai"], v["eps_ai_names"] = eps_ai[-1][1], names
 
+        # 需求有没有兑现成芯片营收：台积电、AI 芯片公司（同步，参考，不进标签）
+        tsmc = self.tw_yoy3(TW_AI_CONFIRM)
+        ai_rev_yoy = ts.pct_change(self.sec_sum(self.group("ai"), "revenue"), 4, "Q")
+
         st = I.ai_demand_state(v)
         self.facts["capex_q"] = v.get("capex_q", "")
         if tok_chg:
@@ -256,9 +260,14 @@ class SemisBuilder:
             Chart("silicon", "SiliconData LLM token 价格指数", "美元 / 百万 token",
                   [Line("指数", self.old_series("silicon", "unit", "USD/M tokens", "value"))],
                   note="token 越便宜、用量越大，算力需求弹性越高；参考，不进判断。"),
-            Chart("ai_rev", "AI 芯片公司营收：同比", "%",
-                  [Line(SEC[t][1], ts.pct_change(self.sec_q(t, "revenue"), 4, "Q")) for t in self.group("ai")],
-                  start=date(2018, 1, 1), note="英伟达、AMD、博通单季营收同比；同步指标，参考。"),
+            Chart("tsmc", "台积电：近 3 个月营收同比", "%", [Line("3 个月同比", tsmc), Line("单月同比", self.tw_yoy1("2330"), dash=True)],
+                  core=True, start=date(2019, 1, 1), note="AI 需求落到代工的实际出货；参考，不进标签。"),
+            Chart("ai_rev", "AI 芯片公司：单季营收同比", "%",
+                  [Line("三家合计", ai_rev_yoy)] + [Line(SEC[t][1], ts.pct_change(self.sec_q(t, "revenue"), 4, "Q"), dash=True)
+                                                 for t in self.group("ai")],
+                  start=date(2018, 1, 1), note="英伟达、AMD、博通；同步指标，参考。"),
+            Chart("tw_ai", "AI 服务器与载板：月营收同比", "%", [Line(TWSE[c][0], self.tw_yoy1(c)) for c in ("2382", "6669", "3037")],
+                  start=date(2019, 1, 1), note="广达、纬颖（服务器组装）、欣兴（ABF 载板）；参考。"),
         )
         metrics = [
             Metric("capex_yoy", "云厂商资本开支同比", capex_yoy, "%", "{:+.1f}", "Q", "capex_yoy",
@@ -266,9 +275,13 @@ class SemisBuilder:
             Metric("tokens_30d", "OpenRouter 30 天用量变化", tok_chg, "%", "{:+.1f}", "DW", "tokens_chg"),
             Metric("eps_ai", "AI 芯片 EPS 30 天修正（平均）", eps_ai, "%", "{:+.2f}", "DW", "eps_ai",
                    note=names),
+            Metric("tsmc_yoy", "台积电营收（3 个月同比）", tsmc, "%", "{:+.1f}", "M", "tsmc", ref=True),
+            Metric("ai_rev_yoy", "英伟达、AMD、博通营收同比", ai_rev_yoy, "%", "{:+.1f}", "Q", "ai_rev", ref=True),
         ]
-        groups = [("资本开支", charts[:2]), ("用量与价格", [c for c in charts if c in ("tokens", "tokens_chg", "silicon")]),
-                  ("预期与营收", [c for c in charts if c in ("eps_ai", "ai_rev")])]
+        groups = [("资本开支", [c for c in charts if c in ("capex", "capex_yoy")]),
+                  ("用量与价格", [c for c in charts if c in ("tokens", "tokens_chg", "silicon")]),
+                  ("预期", [c for c in charts if c == "eps_ai"]),
+                  ("营收兑现", [c for c in charts if c in ("tsmc", "ai_rev", "tw_ai")])]
         return groups, metrics, st
 
     def eps_series(self, ticker: str) -> Series:
@@ -359,6 +372,21 @@ class SemisBuilder:
                 dio_yoy.append(y[-1][1])
         if dio_yoy:
             v["dio_yoy"], v["dio_names"] = sum(dio_yoy) / len(dio_yoy), "、".join(dio_names)
+        # 韩国芯片出口：全球芯片出货最早的硬数据（参考，不进标签）
+        rows = {}
+        for r in self.old("korea"):
+            rows[r["period"]] = r  # 同一期间多行时后一行（asof 更新）覆盖
+        k_yoy = ts.clean((_month(p), _fl(r["month_yoy"])) for p, r in rows.items() if _fl(r.get("month_yoy")) is not None)
+        k_d20 = ts.clean((_month(p), _fl(r["d20_yoy"])) for p, r in rows.items() if _fl(r.get("d20_yoy")) is not None)
+        k_month = ts.clean((_month(p), _fl(r["month_usd_mn"])) for p, r in rows.items() if _fl(r.get("month_usd_mn")) is not None)
+        korea, korea_period = [], ""
+        if rows:
+            p = max(rows)
+            for col, txt in (("month_yoy", "全月"), ("d20_yoy", "前 20 日"), ("d10_yoy", "前 10 日")):
+                if _fl(rows[p].get(col)) is not None:
+                    korea, korea_period = [(_month(p), _fl(rows[p][col]))], f"{p} {txt}"
+                    break
+
         st = I.inventory_state(v)
         if gap:
             self.facts["inv_gap"] = (gap[-1][1], gap[-1][0].isoformat()[:7], gap[-2][1] if len(gap) > 1 else None)
@@ -370,6 +398,9 @@ class SemisBuilder:
                   start=date(2005, 1, 1), note="> 0 库存压力在减轻，常领先价格和营收拐点 1–3 个月。"),
             Chart("dio", "公司库存天数", "天", [Line(SEC[t][1], self.dio(t)) for t in ("MU", "TXN", "MCHP", "NVDA")],
                   start=date(2016, 1, 1), note="期末存货 ÷ 单季销货成本 × 91。偏滞后，用来确认。"),
+            Chart("korea", "韩国芯片出口：同比", "%", [Line("全月", k_yoy), Line("前 20 日", k_d20, dash=True)],
+                  note="来自每日笔记（关税厅速报、产业通商部全月初值）；历史从 2026-06 开始。金额含涨价因素；参考，不进标签。"),
+            Chart("korea_usd", "韩国芯片出口：全月金额", "百万美元", [Line("金额", k_month, "bar")]),
         )
         metrics = [
             Metric("ship_yoy", f"{src}出货同比（3 个月均值）", ship_yoy, "%", "{:+.1f}", "M", "inv_cycle"),
@@ -380,7 +411,9 @@ class SemisBuilder:
             dio_avg = ts.combine(lambda *xs: sum(xs) / len(xs), *(ts.pct_change(self.dio(t), 4, "Q") for t in ("MU", "TXN", "MCHP") if self.dio(t)))
             metrics.append(Metric("dio_yoy", "公司库存天数同比（平均）", dio_avg, "%", "{:+.1f}", "Q", "dio",
                                   note=v["dio_names"], ref=True))
-        groups = [("库存周期", [c for c in charts if c in ("inv_cycle", "inv_gap")]), ("公司库存", [c for c in charts if c == "dio"])]
+        metrics.append(Metric("korea_yoy", "韩国芯片出口同比", korea, "%", "{:+.1f}", "M", "korea", note=korea_period, ref=True))
+        groups = [("库存周期", [c for c in charts if c in ("inv_cycle", "inv_gap")]), ("公司库存", [c for c in charts if c == "dio"]),
+                  ("出货", [c for c in charts if c in ("korea", "korea_usd")])]
         return groups, metrics, st
 
     # =====================================================================
@@ -444,6 +477,7 @@ class SemisBuilder:
                 gpu[g] = c
         self.gpu_90d = statistics.median(gpu.values()) if gpu else None
 
+        mu_yoy = ts.pct_change(self.sec_q("MU", "revenue"), 4, "Q")
         charts = self.add(
             Chart("dram", "DRAM 现货价", "美元 / GB",
                   [Line(p, self.old_series("memory", "product", p, "value")) for p in DRAM], core=True,
@@ -458,6 +492,11 @@ class SemisBuilder:
             Chart("contract", "DRAM 合约价（手工录入）", "美元 / GB",
                   [Line(MANUAL[k][0], self.manual(k)) for k in ("dram_contract_ddr5", "dram_contract_ddr4")]),
             Chart("ppi", "美国半导体 PPI：同比", "%", [Line("同比", ppi_yoy)], start=date(2005, 1, 1)),
+            Chart("mu_rev", "美光：单季营收同比", "%", [Line("营收同比", mu_yoy)], start=date(2016, 1, 1),
+                  note="存储厂营收 = 出货量 × 价格，涨价阶段增速会非常高；参考，不进标签。"),
+            Chart("gm", "毛利率", "%",
+                  [Line(SEC[t][1], self.gm_series(t)) for t in ("NVDA", "MU", "TXN", "AMAT")],
+                  start=date(2016, 1, 1), note="（营收 − 销货成本）÷ 营收。反映定价能力，毛利率见顶回落常早于营收见顶。"),
         )
         dram_series = self.old_series("memory", "product", DRAM[0], "value")
         metrics = [
@@ -469,9 +508,11 @@ class SemisBuilder:
             Metric("nand_chg", f"NAND wafer {v.get('nand_window', 7)} 天变化", [(self.asof, v["nand_chg"])] if "nand_chg" in v else [],
                    "%", "{:+.1f}", "O", "nand", ref=True),
             Metric("ppi_yoy", "美国半导体 PPI 同比", ppi_yoy, "%", "{:+.1f}", "M", "ppi", ref=True),
+            Metric("mu_rev_yoy", "美光营收同比", mu_yoy, "%", "{:+.1f}", "Q", "mu_rev", ref=True),
         ]
-        groups = [("存储", [c for c in charts if c in ("dram", "nand", "ssd", "contract")]), ("算力", [c for c in charts if c == "gpu"]),
-                  ("出厂价格", [c for c in charts if c == "ppi"])]
+        groups = [("存储", [c for c in charts if c in ("dram", "nand", "ssd", "contract", "mu_rev")]),
+                  ("算力", [c for c in charts if c == "gpu"]),
+                  ("出厂价格与毛利率", [c for c in charts if c in ("ppi", "gm")])]
         return groups, metrics, st
 
     def _last_date(self, name: str) -> str:
@@ -548,135 +589,6 @@ class SemisBuilder:
         groups = [("设备与产能", charts)]
         return groups, metrics, st
 
-    # =====================================================================
-    # 分环节：存储、AI 芯片与先进代工、成熟制程与手机、模拟与 MCU、设备
-    # 每个环节：领先指标（有才列）→ 上市公司（营收同比、环比、毛利率，各带上期）
-    @staticmethod
-    def _last_prev(s: Series, months: int) -> tuple[float | None, float | None]:
-        """最新值和 months 个月前的值（没有就是 None）。"""
-        if not s:
-            return None, None
-        d, v = s[-1]
-        prev = dict(s).get(ts._shift_month(d, -months))
-        return v, prev
-
-    def company_row(self, name: str, rev: Series, cogs: Series | None, months: int) -> dict | None:
-        """一家公司的最新一期：营收同比、环比、毛利率，以及上一期的同样三项。
-
-        months = 3 为季报（期间按日历季度），1 为月营收（没有毛利率）。缺期时对应项为 None。
-        """
-        if not rev:
-            return None
-        r, c = dict(rev), dict(cogs or [])
-        d = rev[-1][0]
-        p = ts._shift_month(d, -months)
-
-        def yoy(x):
-            base = r.get(ts._shift_month(x, -12))
-            return (r[x] / base - 1) * 100 if x in r and base else None
-
-        def qoq(x):
-            base = r.get(ts._shift_month(x, -months))
-            return (r[x] / base - 1) * 100 if x in r and base else None
-
-        def gm(x):
-            return (1 - c[x] / r[x]) * 100 if x in r and x in c and r[x] else None
-
-        return {"name": name, "period": qtext(d) if months == 3 else d.isoformat()[:7], "freq": "Q" if months == 3 else "M",
-                "yoy": yoy(d), "yoy_prev": yoy(p), "qoq": qoq(d), "qoq_prev": qoq(p),
-                "gm": gm(d) if cogs is not None else None, "gm_prev": gm(p) if cogs is not None else None}
-
-    def sec_company(self, t: str) -> dict | None:
-        return self.company_row(SEC[t][1], self.sec_q(t, "revenue"), self.sec_q(t, "cogs"), 3)
-
-    def tw_company(self, code: str) -> dict | None:
-        return self.company_row(TWSE[code][0], self.tw_rev(code), None, 1)
-
-    def segments(self):
-        rows = {}
-        for r in self.old("korea"):
-            rows[r["period"]] = r  # 同一期间多行时后一行（asof 更新）覆盖
-        k_yoy = ts.clean((_month(p), _fl(r["month_yoy"])) for p, r in rows.items() if _fl(r.get("month_yoy")) is not None)
-        k_d20 = ts.clean((_month(p), _fl(r["d20_yoy"])) for p, r in rows.items() if _fl(r.get("d20_yoy")) is not None)
-        k_month = ts.clean((_month(p), _fl(r["month_usd_mn"])) for p, r in rows.items() if _fl(r.get("month_usd_mn")) is not None)
-        korea, korea_period = None, ""
-        if rows:
-            p = max(rows)
-            for col, txt in (("month_yoy", "全月"), ("d20_yoy", "前 20 日"), ("d10_yoy", "前 10 日")):
-                if _fl(rows[p].get(col)) is not None:
-                    korea, korea_period = _fl(rows[p][col]), f"{p} {txt}"
-                    break
-
-        mu_yoy = ts.pct_change(self.sec_q("MU", "revenue"), 4, "Q")
-        ai_rev_yoy = ts.pct_change(self.sec_sum(self.group("ai"), "revenue"), 4, "Q")
-        tsmc = self.tw_yoy3(TW_AI_CONFIRM)
-        tw_trad = self.tw_yoy3(TW_TRAD_DEMAND)
-        analog_yoy = ts.pct_change(self.sec_sum(self.group("analog"), "revenue"), 4, "Q")
-        equip_yoy = ts.pct_change(self.sec_sum(self.group("equip"), "revenue"), 4, "Q")
-        f = self.facts
-
-        def lead(name, value, note):
-            return {"name": name, "value": value, "note": note}
-
-        def seg(key, name, what, main_name, main, months, leading, companies):
-            yoy, prev = self._last_prev(main, months)
-            basis = "" if yoy is None else f"{main_name}同比 {yoy:+.1f}%" + (f"（上期 {prev:+.1f}%）" if prev is not None else "")
-            return {"key": key, "name": name, "what": what, "state": I.segment_state(yoy, prev), "basis": basis,
-                    "leading": [x for x in leading if x], "companies": [c for c in companies if c]}
-
-        dram, eps_t, orders = f.get("dram"), f.get("eps_trad"), f.get("orders")
-        segs = [
-            seg("memory", "存储", "DRAM、NAND、HBM；周期弹性最大，最先反映供需", "美光营收", mu_yoy, 3,
-                [dram and lead("DRAM 现货", f"{dram[1]} 天 {dram[0]:+.1f}%", "现货领先合约价 1–2 季"),
-                 korea is not None and lead("韩国芯片出口同比", f"{korea:+.1f}%（{korea_period}）", "最早的出货数据，金额含涨价"),
-                 f.get("premium") is not None and lead("现货比合约", f"{f['premium']:+.1f}%", "> 5% 时下季合约价大概率跟涨")],
-                [self.sec_company("MU")]),
-            seg("ai", "AI 芯片与先进代工", "GPU、定制 AI 芯片和先进制程代工；AI 需求最直接的受益环节", "台积电近 3 个月营收", tsmc, 3,
-                [self.gpu_90d is not None and lead("GPU 租金", f"90 天 {self.gpu_90d:+.1f}%", "算力紧不紧的直接价格"),
-                 f.get("tokens") and lead("OpenRouter 用量", f"30 天 {f['tokens'][0]:+.1f}%", "推理需求的高频读数")],
-                [self.sec_company("NVDA"), self.sec_company("AMD"), self.sec_company("AVGO"), self.tw_company("2330")]),
-            seg("mature", "成熟制程与手机", "成熟制程代工和手机芯片；跟着手机、PC 等消费电子走", "联电 + 联发科近 3 个月营收", tw_trad, 3,
-                [eps_t and lead("高通、英特尔 EPS 修正", f"30 天 {eps_t[0]:+.2f}%", "手机、PC 需求的预期")],
-                [self.tw_company("2303"), self.tw_company("2454")]),
-            seg("analog", "模拟与 MCU", "电源、信号链、微控制器；工业和汽车为主，周期规律最典型", "三家合计营收", analog_yoy, 3,
-                [orders and lead("美国电子产品新订单", f"3 个月同比 {orders[0]:+.1f}%（{orders[1]}）", "订单领先出货 1–3 个月")],
-                [self.sec_company(t) for t in self.group("analog")]),
-            seg("equip", "半导体设备", "光刻、刻蚀、薄膜、检测设备；反映晶圆厂的扩产力度", "三家合计营收", equip_yoy, 3,
-                [f.get("btb") is not None and lead("ASML 订单出货比", f"{f['btb']:.2f}", "> 1.1 说明订单在累积")],
-                [self.sec_company(t) for t in self.group("equip")]),
-        ]
-
-        charts = self.add(
-            Chart("mu_rev", "美光：单季营收同比", "%", [Line("营收同比", mu_yoy)], core=True, start=date(2016, 1, 1),
-                  note="存储环节的主指标。"),
-            Chart("korea", "韩国芯片出口：同比", "%", [Line("全月", k_yoy), Line("前 20 日", k_d20, dash=True)], core=True,
-                  note="来自每日笔记（关税厅速报、产业通商部全月初值）；历史从 2026-06 开始。金额含涨价因素。"),
-            Chart("tsmc", "台积电：近 3 个月营收同比", "%", [Line("3 个月同比", tsmc), Line("单月同比", self.tw_yoy1("2330"), dash=True)],
-                  core=True, start=date(2019, 1, 1), note="AI 芯片与先进代工环节的主指标。"),
-            Chart("ai_rev", "AI 芯片公司：单季营收同比", "%",
-                  [Line("三家合计", ai_rev_yoy)] + [Line(SEC[t][1], ts.pct_change(self.sec_q(t, "revenue"), 4, "Q"), dash=True)
-                                                 for t in self.group("ai")],
-                  core=True, start=date(2018, 1, 1), note="英伟达、AMD、博通。"),
-            Chart("gm", "毛利率", "%",
-                  [Line(SEC[t][1], self.gm_series(t)) for t in ("NVDA", "MU", "TXN", "AMAT")],
-                  start=date(2016, 1, 1), note="（营收 − 销货成本）÷ 营收。毛利率见顶回落常早于营收见顶。"),
-            Chart("korea_usd", "韩国芯片出口：全月金额", "百万美元", [Line("金额", k_month, "bar")]),
-            Chart("tw_ai", "AI 服务器与载板：月营收同比", "%", [Line(TWSE[c][0], self.tw_yoy1(c)) for c in ("2382", "6669", "3037")],
-                  start=date(2019, 1, 1), note="广达、纬颖（服务器组装）、欣兴（ABF 载板）；参考。"),
-        )
-        latest_korea = [(_month(max(rows)), korea)] if rows and korea is not None else []
-        metrics = [
-            Metric("mu_rev_yoy", "美光营收同比", mu_yoy, "%", "{:+.1f}", "Q", "mu_rev"),
-            Metric("korea_yoy", "韩国芯片出口同比", latest_korea, "%", "{:+.1f}", "M", "korea", note=korea_period),
-            Metric("tsmc_yoy", "台积电营收（3 个月同比）", tsmc, "%", "{:+.1f}", "M", "tsmc"),
-            Metric("ai_rev_yoy", "英伟达、AMD、博通营收同比", ai_rev_yoy, "%", "{:+.1f}", "Q", "ai_rev"),
-        ]
-        groups = [("存储", [c for c in charts if c in ("mu_rev", "korea", "korea_usd")]),
-                  ("AI 芯片与先进代工", [c for c in charts if c in ("tsmc", "ai_rev", "tw_ai")]),
-                  ("毛利率", [c for c in charts if c == "gm"])]
-        st = {"label": "", "why": [], "head": "；".join(f"{x['name']}{x['state']}" for x in segs), "anchors": {}}
-        return groups, metrics, st, segs
-
     def gm_series(self, t: str) -> Series:
         r, c = dict(self.sec_q(t, "revenue")), dict(self.sec_q(t, "cogs"))
         return sorted((d, (1 - c[d] / r[d]) * 100) for d in r if d in c and r[d])
@@ -710,7 +622,6 @@ class SemisBuilder:
         inv = self.inventory()
         price = self.price()
         cap = self.capacity()
-        seg_groups, seg_metrics, seg_st, segs = self.segments()
         # 供需五个维度：需求端（AI 算力、传统终端），供给端（产能、库存、价格）
         dims = [("ai_demand", "AI 算力", "需求端", ai), ("trad_demand", "传统终端", "需求端", trad),
                 ("capacity", "产能", "供给端", cap), ("inventory", "库存", "供给端", inv), ("price", "价格", "供给端", price)]
@@ -729,23 +640,16 @@ class SemisBuilder:
             out_dims.append({"key": key, "name": name, "side": side, "label": state["label"], "why": state.get("why", []),
                              "head": state["head"], "vote": vote["stage"] if vote else "", "vote_why": vote["why"] if vote else "",
                              "metrics": [x for x in (metric_json(m, state.get("anchors", {}), self.charts) for m in metrics) if x]})
-            sections.append({"key": key, "name": f"{side} · {name}",
+            sections.append({"key": key, "name": name, "side": side,
                              "groups": [{"name": g, "charts": ids} for g, ids in groups if ids]})
-        for m in seg_metrics:
-            m.about = ABOUT.get(m.id, "")
-        # 分环节在依据层也有一块（放在 dimensions 里给共用的版式读，kind 标明不是维度）
-        out_dims.append({"key": "segments", "name": "分环节", "kind": "segments", "label": "", "why": [], "head": seg_st["head"],
-                         "metrics": [x for x in (metric_json(m, {}, self.charts) for m in seg_metrics) if x]})
-        sections.append({"key": "segments", "name": "分环节", "groups": [{"name": g, "charts": ids} for g, ids in seg_groups if ids]})
         return {
             "asof": self.asof.isoformat(),
             "method": "先定方向：AI 算力与传统终端两个需求维度的档位取平均，扩张为上行、收缩为下行，其余为震荡。"
                       "再定阶段：AI 算力、传统终端、产能、库存、价格五个维度按经典半导体周期各投一票（早期 / 中期 / 后期），"
                       "票最多的阶段胜出，平票取中期。需求维度内部每个数按锚点投一票取平均定标签。"
-                      "分环节用各环节主指标的同比及其变化定状态，不进整体判断。阈值都写在 pipeline/semis/interpret.py。",
+                      "标「参考」的数（台积电与 AI 芯片营收、韩国出口、美光营收等）用来确认，不进判断。阈值都写在 pipeline/semis/interpret.py。",
             "verdict": {"name": pos["name"], "headline": pos["head"], "label": "景气位置", "lines": []},
             "position": pos,
-            "segments": segs,
             "dimensions": out_dims,
             "releases": self.releases(),
             "sections": sections,

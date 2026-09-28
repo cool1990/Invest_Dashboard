@@ -1,5 +1,5 @@
-// 半导体页：共用的版式在 board.js。第一屏按「结论 → 为什么（供需五个维度）→ 分环节 → 后续关注」排，
-// 下面是指标详解（每个指标附说明）。
+// 半导体页：共用的版式在 board.js。总分结构：第一屏「结论（周期阶段）→ 验证（需求端、供给端五个维度各投一票）→ 后续关注」，
+// 下面是指标详解：同样按需求端、供给端，把每个维度落到具体指标（每个指标附说明）。
 "use strict";
 
 // 周期刻度：上行早 → 中 → 后 → 下行早 → 中 → 后，震荡另标；只标整体所在的一格
@@ -13,8 +13,9 @@ function trackHTML(p) {
   </div>`;
 }
 
-// 为什么：供需五个维度，一行一个：维度 | 标签 | 投哪个阶段 | 理由
-function whyHTML(p) {
+// 验证：需求端、供给端五个维度，一行一个：维度 | 标签 | 投哪个阶段 | 理由；点一行跳到下面这个维度的指标
+function renderWhy() {
+  const p = DATA.position;
   const dims = DATA.dimensions.filter((d) => d.side);
   const sides = [...new Set(dims.map((d) => d.side))];
   const rows = sides.map((side) => `<div class="sd-side">${esc(side)}</div>` + dims.filter((d) => d.side === side).map((d) => `
@@ -25,48 +26,20 @@ function whyHTML(p) {
         <span class="sd-why">${esc(d.vote_why || d.head || "")}</span>
       </a>`).join("")).join("");
   const foot = p.tally ? `五个维度：${esc(p.tally)} → <b>${esc(p.name)}</b>（票最多的阶段胜出，平票取中期）` : "";
-  return `<h3 class="sub-h">为什么：供需五个维度</h3>
+  document.getElementById("why").innerHTML = `<h3 class="sub-h">验证：从需求端和供给端看阶段</h3>
+    <p class="small muted">需求定方向（上行 / 下行），五个维度按经典半导体周期各投一票定阶段。每个维度用哪些指标，点一行看下面的详解。</p>
     <div class="sd">${rows}</div>${foot ? `<p class="sd-foot small">${foot}</p>` : ""}`;
 }
 
+// 结论：半导体整体处在周期哪个阶段
 function renderPosition() {
   const p = DATA.position;
   document.getElementById("verdict").innerHTML = `
-    <div class="v-label">景气位置</div>
+    <div class="v-label">结论 · 景气位置</div>
     <h2 class="v-head">${esc(p.head)}</h2>
     ${p.meaning ? `<p class="v-meaning">${esc(p.meaning)}</p>` : ""}
     ${p.split ? `<p class="v-split small">${esc(p.split)}</p>` : ""}
-    ${trackHTML(p)}
-    ${whyHTML(p)}`;
-}
-
-// 分环节：每个环节先列领先指标（有才列），再列上市公司的营收同比、环比、毛利率（各带上期）
-const pct = (v, d = 1) => (v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(d)}%`);
-const gmTxt = (v) => (v === null || v === undefined ? "—" : `${v.toFixed(1)}%`);
-function cellHTML(v, prev, fmt) {
-  return `<td><b>${fmt(v)}</b>${prev === null || prev === undefined ? "" : `<small>上期 ${fmt(prev)}</small>`}</td>`;
-}
-
-function renderSegments() {
-  const segs = DATA.segments || [];
-  const cls = (s) => (s.startsWith("上行") ? "up" : s === "下行" ? "down" : s === "触底回升" ? "turn" : "");
-  const block = (x) => {
-    const lead = x.leading.length ? `<ul class="sg-lead">${x.leading.map((l) => `<li><span class="tag tag-lead">领先</span>
-        <b>${esc(l.name)}</b> ${esc(l.value)}<span class="muted"> · ${esc(l.note)}</span></li>`).join("")}</ul>` : "";
-    const rows = x.companies.map((c) => `<tr><td>${esc(c.name)}<small>${esc(c.period)}</small></td>
-        ${cellHTML(c.yoy, c.yoy_prev, pct)}${cellHTML(c.qoq, c.qoq_prev, pct)}${cellHTML(c.gm, c.gm_prev, gmTxt)}</tr>`).join("");
-    const table = rows ? `<div class="table-wrap"><table class="data co"><tr><th>公司 · 期间</th><th>营收同比</th><th>环比</th><th>毛利率</th></tr>${rows}</table></div>` : "";
-    return `<div class="sg-block">
-      <div class="sg-head"><span class="sg-name">${esc(x.name)}</span><span class="sg-state ${cls(x.state)}">${esc(x.state)}</span>
-        <span class="small muted">${esc(x.basis || "")}</span></div>
-      <div class="small muted sg-what">${esc(x.what)}</div>
-      ${lead}${table}
-    </div>`;
-  };
-  document.getElementById("segments").innerHTML = `<h3 class="sub-h">分环节：各环节现在怎样</h3>
-    <p class="small muted">每个环节先看领先指标，再看上市公司最新一期的营收同比、环比和毛利率（小字是上一期）。状态按主指标同比及其变化定，不进整体判断。</p>
-    ${segs.map(block).join("")}
-    <p class="small muted sg-foot">季报期间按财报期中所在的日历季度写；台湾公司是月营收，没有毛利率；「—」表示暂无数据。</p>`;
+    ${trackHTML(p)}`;
 }
 
 function renderWatch() {
@@ -113,7 +86,7 @@ async function main() {
   }
   document.getElementById("asof").textContent = `数据更新于 ${(DATA.status?.updated_at || DATA.asof).replace("T", " ").replace("Z", " UTC")}`;
   renderPosition();
-  renderSegments();
+  renderWhy();
   renderWatch();
   renderStateLog();
   renderRange();
