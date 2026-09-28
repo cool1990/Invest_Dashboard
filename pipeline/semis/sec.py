@@ -31,7 +31,7 @@ CONCEPTS = {
     "inventory": ("InventoryNet",),
 }
 ITEMS = {"cloud": ("capex",), "ai": ("revenue", "cogs", "inventory"), "memory": ("revenue", "cogs", "inventory"),
-         "analog": ("revenue", "cogs", "inventory"), "equip": ("revenue",)}
+         "analog": ("revenue", "cogs", "inventory"), "equip": ("revenue", "cogs")}
 INSTANT = {"inventory"}
 START_YEAR = 2015
 
