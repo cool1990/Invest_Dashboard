@@ -5,7 +5,7 @@ const NAV = [
   { href: "index.html", label: "总览" },
   { href: "macro.html", label: "宏观" },
   { href: "semis.html", label: "半导体与 AI" },
-  { label: "加密货币", soon: true },
+  { href: "crypto.html", label: "加密货币" },
   { label: "个股", soon: true },
 ];
 

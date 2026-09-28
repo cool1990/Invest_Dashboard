@@ -1,0 +1,58 @@
+name: 更新加密货币数据
+
+on:
+  schedule:
+    # 每天 13:40 UTC（北京时间 21:40）：美国当天的 ETF 净流入通常已经出现在 Farside。
+    # 避开宏观 22:40 UTC 和半导体 02:10 UTC，三个工作流写的文件不重叠。
+    - cron: "40 13 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update-crypto
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 测试
+        run: python3 -m unittest discover -s tests
+      - name: 下载并生成看板数据
+        # 单个来源失败不会让这一步失败：沿用旧文件，并记进 data/crypto/status.json。
+        run: python3 scripts/update_crypto.py
+      - name: 提交数据
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --staged --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "数据没有变化"
+            exit 0
+          fi
+          git commit -m "data: 更新加密货币数据"
+          # 宏观、半导体工作流也会提交 data/，先把它们的提交拉下来再推（两边写的文件不重叠）
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: update
+    if: needs.update.outputs.changed == 'true'
+    uses: ./.github/workflows/pages.yml
+    with:
+      ref: ${{ needs.update.outputs.sha }}

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>加密货币 · 投资看板</title>
+  <link rel="stylesheet" href="assets/css/site.css">
+</head>
+<body data-board="crypto">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="index.html">投资看板</a>
+      <nav class="nav" id="nav" aria-label="板块"></nav>
+    </div>
+  </header>
+  <main id="app">
+    <div class="page-head">
+      <div>
+        <h1>加密货币</h1>
+        <div class="sub">比特币周期：估值 · 持有者 · 杠杆 · 现货需求，价格只做确认 <span class="muted small" id="asof"></span></div>
+      </div>
+    </div>
+
+    <div class="top">
+      <div class="top-main">
+        <section class="card verdict" id="verdict"></section>
+        <section class="card statelog" id="statelog"></section>
+        <section class="card states" id="states" aria-label="七个维度"></section>
+      </div>
+      <aside class="card side" aria-labelledby="fresh-title">
+        <h2 id="fresh-title">数据日期</h2>
+        <p class="small muted">各来源最新观测。美国现货 ETF 要等美股收盘、Farside 汇总之后才完整，通常比币价晚一个交易日。这里没有经济数据发布日，所以不列「即将发布」。</p>
+        <div id="fresh"></div>
+      </aside>
+    </div>
+
+    <h2 class="layer">依据</h2>
+    <p class="layer-sub">每块只列决定上面那句话的几个数：最新值、较上期、对照的锚点。标「参考」的不进顶部判断。点指标名跳到下面的图。持有者成本和长线 SOPR 的免费接口大约滞后 7 天，判断用同一天的价格。</p>
+    <div class="section-nav">
+      <div class="chips" id="chips"></div>
+      <div class="seg" id="range" role="group" aria-label="时间范围"></div>
+    </div>
+    <div id="sections"></div>
+
+    <div class="card notes" id="notes"></div>
+    <div class="card health" id="health"></div>
+  </main>
+  <footer>数据来源：Coin Metrics 社区数据（CC BY-NC）、BGeometrics、币安公开行情（BTCUSDT 永续资金费率与未平仓、现货日线）、Farside Investors 的 ETF 资金流、DefiLlama 稳定币、alternative.me 恐贪指数。仅供个人参考，不构成投资建议。</footer>
+  <script src="assets/vendor/chart.umd.min.js"></script>
+  <script src="assets/vendor/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <script src="assets/js/common.js"></script>
+  <script src="assets/js/board.js"></script>
+  <script src="assets/js/crypto.js"></script>
+</body>
+</html>
