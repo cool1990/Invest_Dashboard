@@ -1,18 +1,25 @@
-// 加密货币页：共用的三层版式在 board.js。右侧是各来源的最新日期，没有经济数据发布日历。
+// 加密货币页：共用的三层版式在 board.js。右侧是已整理指标的最新读数，没有经济数据发布日历。
 "use strict";
 
-function renderFresh() {
-  const src = (DATA.status && DATA.status.sources) || [];
+function renderReadings() {
+  const dims = DATA.dimensions || [];
   const el = document.getElementById("fresh");
-  if (!src.length) {
-    el.innerHTML = `<p class="small muted">还没有数据。</p>`;
-    return;
-  }
-  el.innerHTML = `<ul class="up-list">${src.map((s) => `<li>
-      <span class="up-time">${esc((s.last_obs || "—").slice(5))}</span>
-      <span class="up-title">${esc(s.name)}${s.ok ? "" : "（这次没刷新）"}</span>
-      <span class="up-num"><small>${esc(s.note || "")}</small></span>
-    </li>`).join("")}</ul>`;
+  const blocks = dims.map((d) => {
+    const rows = (d.metrics || []).map((m) => {
+      const w = m.watch;
+      const name = m.chart ? `<a href="#c-${esc(m.chart)}">${esc(m.name)}</a>` : esc(m.name);
+      const ref = m.ref ? ` <span class="tag tag-ref">参考</span>` : "";
+      const tag = w ? ` <span class="tag${w.hi ? " tag-alert" : ""}">${esc(w.mark || "注意")}</span>` : "";
+      return `<li class="${w && w.hi ? "hi" : ""}">
+        <span class="up-title">${name}${ref}${tag}</span>
+        <span class="up-num"><b>${esc(m.text)}</b> ${esc(m.unit)}<small>${esc(m.date || "")}</small></span>
+        <div class="read-chg"><span class="muted">较上期</span> ${chgHTML(m.chg)}</div>
+        ${w ? `<p class="read-why">${esc(w.why)}</p>` : ""}
+      </li>`;
+    }).join("");
+    return rows ? `<h3 class="read-dim">${esc(d.name)}</h3><ul class="reads">${rows}</ul>` : "";
+  }).join("");
+  el.innerHTML = blocks || `<p class="small muted">还没有数据。</p>`;
 }
 
 function renderNotes() {
@@ -47,7 +54,7 @@ async function main() {
   renderVerdict();
   renderStateLog();
   renderStates();
-  renderFresh();
+  renderReadings();
   renderRange();
   renderSections();
   renderNotes();

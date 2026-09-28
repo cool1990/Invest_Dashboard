@@ -169,6 +169,36 @@ class BreadthSentimentTest(unittest.TestCase):
         self.assertEqual(I.trend_state({"ma_dist": -5.1})["label"], "下降趋势")
 
 
+class WatchTest(unittest.TestCase):
+    def test_quiet_band_is_unmarked(self):
+        self.assertEqual(I.watch_reasons("valuation", {"mvrv": 1.0}), {})
+        self.assertEqual(I.watch_reasons("valuation", {"mvrv": 1.2}), {})
+        self.assertEqual(I.watch_reasons("leverage", {"funding7": 0.03, "oi_30d": 15}), {})
+        self.assertEqual(I.watch_reasons("leverage", {"funding7": 0.0, "oi_30d": -15}), {})
+        self.assertEqual(I.watch_reasons("spot", {"etf_usd": 100, "issuance_usd": 200, "stable_30d": 2}), {})
+        self.assertEqual(I.watch_reasons("spot", {"etf_usd": -100, "issuance_usd": 200, "stable_30d": -1}), {})
+        self.assertEqual(I.watch_reasons("trend", {"ma_dist": 5}), {})
+        self.assertEqual(I.watch_reasons("sentiment", {"fng": 74}), {})
+        self.assertEqual(I.watch_reasons("valuation", {"mvrv": None}), {})
+
+    def test_marks_the_band_that_writes_the_headline(self):
+        mvrv = I.watch_reasons("valuation", {"mvrv": 1.58})["mvrv"]
+        self.assertEqual(mvrv["mark"], "注意")
+        self.assertFalse(mvrv["hi"])
+        self.assertIn("2.4", mvrv["why"])
+        hot = I.watch_reasons("valuation", {"mvrv": 2.41})["mvrv"]
+        self.assertTrue(hot["hi"])
+        holders = I.watch_reasons("holders", {"supply_30d": 1.8, "sopr7": 1.01, "price": 80, "sth": 70})
+        self.assertIn("供给在增加", holders["supply_30d"]["why"])
+        self.assertNotIn("sopr7", holders)
+        outflow = I.watch_reasons("spot", {"etf_usd": -800, "issuance_usd": 700, "stable_30d": 0})
+        self.assertTrue(outflow["etf_20d"]["hi"])
+        crowd = I.watch_reasons("leverage", {"funding7": 0.031, "oi_30d": -16})
+        self.assertTrue(crowd["funding7"]["hi"])
+        self.assertTrue(crowd["oi_30d"]["hi"])
+        self.assertTrue(I.watch_reasons("sentiment", {"fng": 80})["fng"]["hi"])
+
+
 class EtfParseTest(unittest.TestCase):
     HTML = """
     <table class="etf"><thead><tr><th> </th><th>Total</th></tr></thead><tbody>
@@ -247,6 +277,10 @@ class BuildShapeTest(unittest.TestCase):
         self.assertEqual(labels["leverage"], "中性")
         self.assertEqual(dash["verdict"]["name"], "景气上行，资金配合")
         self.assertIn("mvrv", dash["charts"])
+        mvrv_row = next(m for d in dash["dimensions"] if d["key"] == "valuation" for m in d["metrics"] if m["id"] == "mvrv")
+        self.assertEqual(mvrv_row["watch"]["mark"], "注意")
+        price_row = next(m for d in dash["dimensions"] if d["key"] == "valuation" for m in d["metrics"] if m["id"] == "price")
+        self.assertNotIn("watch", price_row)
         for line in dash["verdict"]["lines"]:
             if line["k"] == "价格":
                 continue

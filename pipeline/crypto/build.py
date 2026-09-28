@@ -185,6 +185,7 @@ class CryptoBuilder:
         realized = ts.combine(lambda p, m: p / m if m else None, price, mvrv)
         v = {"mvrv": self._last(mvrv), "price": self._last(price), "realized": self._last(realized)}
         st = I.valuation_state(v)
+        st["values"] = v
         ids = self.add(
             Chart("mvrv", "MVRV", "倍", [Line("MVRV", mvrv)], core=True,
                   note=f"低于 {I.MVRV_CHEAP:g} 为低于全体成本，高于 {I.MVRV_HOT:g} 为过热（ETF 时代的顶部，不是 2017 年的 4）。"),
@@ -221,6 +222,7 @@ class CryptoBuilder:
             "sopr7": self._last(sopr7, anchor),
         }
         st = I.holder_state(v)
+        st["values"] = v
         ids = self.add(
             Chart("cost_ladder", "价格与短线、长线成本", "美元",
                   [Line("价格", price), Line("短线成本", sth), Line("长线成本", lth)], core=True,
@@ -244,6 +246,7 @@ class CryptoBuilder:
         oi_chg = chg_series(ratio, 30)
         v = {"funding7": self._last(fund), "oi_30d": self._last(oi_chg)}
         st = I.leverage_state(v)
+        st["values"] = v
         ids = self.add(
             Chart("funding", "资金费率（7 日均值）", "% / 8 小时", [Line("7 日均值", fund)], core=True,
                   note=f"币安 BTCUSDT 永续。基准每 8 小时 0.01%，7 日均值高于 {I.FUND_HOT:g}% 为多头拥挤。不是全市场。"
@@ -272,6 +275,7 @@ class CryptoBuilder:
             "stable_30d": stable_chg[-1][1] if stable_chg else None,
         }
         st = I.spot_state(v)
+        st["values"] = v
         note = ""
         if self.src.etf_btc:
             d, flow = self.src.etf_btc[-1]
@@ -303,6 +307,7 @@ class CryptoBuilder:
         ma = ts.rolling_obs(price, 200) if len(price) >= 200 else []
         dist = ts.combine(lambda p, m: (p / m - 1) * 100 if m else None, price, ma)
         st = I.trend_state({"ma_dist": self._last(dist)})
+        st["values"] = {"ma_dist": self._last(dist)}
         ids = self.add(
             Chart("ma", "价格与 200 日均线", "美元", [Line("价格", price), Line("200 日均线", ma)], core=True,
                   note=f"收盘高于均线 {I.MA_UP:g}% 为上升，低于 {I.MA_DOWN:g}% 为下降。只确认周期，不改周期名字。"),
@@ -321,6 +326,7 @@ class CryptoBuilder:
         dom_chg = diff_series(self.src.dominance, 30)
         v = {"dom_30d": self._last(dom_chg), "eth_30d": self._last(eth_chg)}
         st = I.breadth_state(v)
+        st["values"] = v
         ids = self.add(
             Chart("dom", "比特币主导率", "%", [Line("主导率", self.src.dominance)], core=True,
                   note=f"30 天变化超过 ±{I.DOM_BAND:g} 个百分点为独强或扩散。历史来自 BGeometrics。"),
@@ -336,6 +342,7 @@ class CryptoBuilder:
         fng = self.src.fng
         fng7 = ts.rolling_obs(fng, 7) if len(fng) >= 7 else []
         st = I.sentiment_state({"fng": self._last(fng), "fng7": self._last(fng7)})
+        st["values"] = {"fng": self._last(fng), "fng7": self._last(fng7)}
         ids = self.add(
             Chart("fng", "恐贪指数", "", [Line("当日", fng), Line("7 日均值", fng7, dash=True)], core=True,
                   note="alternative.me。大半是波动率和动量，和 200 日均线重复，不进顶部判断。"),
@@ -360,10 +367,19 @@ class CryptoBuilder:
         st = {}
         for key, name, (groups, metrics, state) in parts:
             st[key] = state
+            reasons = I.watch_reasons(key, state.get("values") or {})
+            rows = []
+            for m in metrics:
+                js = metric_json(m, state.get("anchors", {}), self.charts)
+                if not js:
+                    continue
+                if m.id in reasons:
+                    js["watch"] = reasons[m.id]
+                rows.append(js)
             out_dims.append({
                 "key": key, "name": name, "label": state["label"], "why": state.get("why", []),
                 "head": state["head"],
-                "metrics": [x for x in (metric_json(m, state.get("anchors", {}), self.charts) for m in metrics) if x],
+                "metrics": rows,
             })
             sections.append({"key": key, "name": name,
                              "groups": [{"name": g, "charts": ids} for g, ids in groups if ids]})
