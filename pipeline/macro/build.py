@@ -22,6 +22,7 @@ from .. import series as ts
 from ..series import Series
 from . import consensus as cons
 from . import interpret as I
+from . import importance
 from .scenario import Scenario
 
 DISPLAY_START = date(1990, 1, 1)
@@ -809,9 +810,15 @@ class MacroBuilder:
             row = {"title": name or title, "title_en": title, "release_at": e["release_at"],
                    "bj": cons.to_beijing(e["release_at"]), "impact": e.get("impact", ""),
                    "forecast_text": f_text, "previous_text": p_text, "dim": cons.dim_of(title),
-                   "key": spec.key if spec else None}
+                   "key": spec.key if spec else None, "bj_date": at.astimezone(cons.BJ).date().isoformat(),
+                   "importance": importance.rate(title)}
+            shown = spec or name or e.get("impact") == "High"
+            # 北京时间今天已经发布的也放进日历，页面上「今日发布」按访问时的北京日期挑出来
+            today = at <= now and row["bj_date"] == now.astimezone(cons.BJ).date().isoformat()
+            if shown and today:
+                upcoming.append({**row, "done": True})
             if at > now:
-                if at <= now + timedelta(days=UPCOMING_DAYS) and (spec or name or e.get("impact") == "High"):
+                if at <= now + timedelta(days=UPCOMING_DAYS) and shown:
                     if spec:
                         ref = cons.ref_period(spec, at.date())
                         row["ref"] = self._ref_text(spec, ref)
@@ -852,7 +859,7 @@ class MacroBuilder:
             for r in nc.get(measure, [])[-2:]:
                 nowcast.append({"measure": measure, "period": r["period"], "nowcast": r.get("nowcast", ""),
                                 "actual": r.get("actual", "")})
-        return {"recent": recent, "upcoming": upcoming, "nowcast": nowcast}
+        return {"recent": recent, "upcoming": upcoming, "nowcast": nowcast, "importance_rule": importance.RULE}
 
     def market_reaction(self, day: date) -> str:
         """发布当天 2 年期国债的日变化，以及早晨笔记里年底 EFFR 隐含值在发布前后的变化。"""
