@@ -280,7 +280,12 @@ class InterpretTest(unittest.TestCase):
         # 产出按已公布的上季实际 GDP 判断，GDPNow 5.0% 只作参考
         st = I.growth_state({"gdpnow": 5.0, "gdp_q": 1.4838, "nfp3": 71, "nfp3_ago": 38, "unrate_chg12": -0.2,
                              "sahm": -0.07})
-        self.assertEqual(st["head"], "产出接近潜在、就业降温")  # 1.48 按公布精度算 1.5
+        # 1.48 按公布精度算 1.5；标签不在理由里重复，理由写用哪几个数、对照什么
+        self.assertEqual([w["k"] for w in st["why"]], ["产出接近潜在", "就业降温"])
+        self.assertEqual(st["why"][0]["t"], "上季实际 GDP 1.5%，接近约 2% 的潜在增速")
+        self.assertIn("月均新增 7.1 万人，只够维持失业率不变", st["why"][1]["t"])
+        self.assertNotIn("GDPNow", st["head"])
+        self.assertEqual(st["summary"], "产出接近潜在、就业降温")
         self.assertEqual(st["label"], "接近潜在")
         self.assertFalse(st["split"])
         self.assertEqual(st["level"], 0)
@@ -289,12 +294,13 @@ class InterpretTest(unittest.TestCase):
         # 还没有实际值时才用 GDPNow，并在句子里写明
         only = I.growth_state({"gdpnow": 5.0, "nfp3": 71})
         self.assertEqual(only["output"], "偏强")
-        self.assertIn("按 GDPNow 预测", only["head"])
+        self.assertIn("暂按 GDPNow 模型预测 5.0%", only["head"])
         # 有核心 GDP 时以它定档；GDP 总量被净出口拖到另一档时，句子里写明
         dragged = I.growth_state({"gdp_q": 0.8, "core_gdp": 2.1, "nfp3": 71,
                                   "contrib": {"pce": 1.3, "fixed": 0.4, "inv": 0.3, "gov": 0.2, "nx": -1.4}})
         self.assertEqual(dragged["output"], "接近潜在")
-        self.assertEqual(dragged["head"], "产出接近潜在（GDP 总量 0.8%，净出口拖累 1.4 个百分点）、就业降温")
+        self.assertEqual(dragged["why"][0]["t"], "核心 GDP（消费 + 固定投资）2.1%，接近约 2% 的潜在增速；"
+                                                 "GDP 总量只有 0.8%，主要是净出口拖累 1.4 个百分点，不代表内需弱")
         self.assertIn("以核心为准", dragged["anchors"]["gdp_q"])
         # 反过来：库存把总量抬高，核心需求其实偏弱
         lifted = I.growth_state({"gdp_q": 2.6, "core_gdp": 1.0, "nfp3": 71,
@@ -303,7 +309,12 @@ class InterpretTest(unittest.TestCase):
         self.assertIn("库存拉高 1.1 个百分点", lifted["head"])
         # 分档相同时不加注
         same = I.growth_state({"gdp_q": 1.6, "core_gdp": 2.2, "nfp3": 71})
-        self.assertEqual(same["head"], "产出接近潜在、就业降温")
+        self.assertNotIn("GDP 总量", same["head"])
+        # 分化时标签写「分化」，理由里分别写产出和就业，不再重复「分化」
+        split = I.growth_state({"gdp_q": 1.5, "core_gdp": 4.2, "nfp3": 71})
+        self.assertEqual(split["label"], "分化")
+        self.assertNotIn("分化", split["head"])
+        self.assertEqual(split["summary"], "产出偏强，但就业降温")
         weak = I.growth_state({"gdpnow": 0.3, "gdp_q": 0.8, "nfp3": -20, "unrate_chg12": 0.6, "sahm": 0.6})
         self.assertEqual(weak["label"], "收缩风险")
 
@@ -314,22 +325,29 @@ class InterpretTest(unittest.TestCase):
                             "dot_next": 4.10})
         self.assertEqual(p["label"], "立场接近中性 · 市场定价加息")
         self.assertIn("加息约 3.5 次", p["head"])
-        self.assertIn("鹰 66bp", p["head"])
+        self.assertIn("比点阵图 4.10% 鹰 66bp", p["head"])
+        # 标签已写结论，理由的小标题只写看哪一块，不重复标签
+        self.assertEqual([w["k"] for w in f["why"]], ["财政脉冲", "偿债压力"])
+        self.assertIn("对增长是拖累", f["why"][0]["t"])
+        self.assertIn("超过 1990 年代峰值", f["summary"])
         self.assertIn("加息约 1.4 次", p["anchors"]["year_end"])
         self.assertIn("点阵图 4.10%：高 66bp", p["anchors"]["next_year"])
 
     def test_environment(self):
         g = I.growth_state({"gdpnow": 5.0, "gdp_q": 1.5, "nfp3": 71, "nfp3_ago": 38})
         i = I.inflation_state({"core_yoy": 3.34, "core_3m": 3.05, "nowcast": [("8 月", 3.40), ("9 月", 3.49)]})
-        self.assertEqual(i["head"], "核心 PCE 明显高于目标，短期动能持平")
-        env = I.environment(g, i, {"head": "x"}, {"label": "宽松"})
+        self.assertEqual([w["k"] for w in i["why"]], ["明显高于目标", "短期动能持平"])
+        env = I.environment(g, i, {"summary": "政策立场接近中性"}, {"summary": "金融条件宽松"},
+                            {"summary": "赤字在收窄"})
         self.assertEqual(env["name"], "通胀粘性")
-        # Nowcast 只比官方高 0.15 个百分点：写「略高」，不写「再抬头」
-        self.assertEqual(env["head"], "通胀粘性：产出接近潜在、就业降温，通胀偏热（Nowcast 略高）")
+        self.assertEqual(env["head"], "通胀粘性：增长大致在潜在水平，通胀仍高于目标")
+        self.assertEqual([x["k"] for x in env["lines"]], ["经济", "流动性", "财政", "货币"])
+        self.assertEqual(env["lines"][0]["t"], "产出接近潜在、就业降温；核心通胀明显高于目标，短期没有回落")
+        # Nowcast 是模型预测：只比官方高 0.15 个百分点时，顶部和理由里都不提
+        self.assertNotIn("Nowcast", i["head"] + str(env))
         hot = I.inflation_state({"core_yoy": 3.34, "core_3m": 3.05, "nowcast": [("9 月", 3.8)]})
-        self.assertIn("Nowcast 预计明显回升", I.environment(g, hot, {}, {})["head"])
-        flat = I.inflation_state({"core_yoy": 3.34, "core_3m": 3.05, "nowcast": [("9 月", 3.40)]})
-        self.assertNotIn("Nowcast", I.environment(g, flat, {}, {})["head"])
+        self.assertIn("模型预计回升", [w["k"] for w in hot["why"]])
+        self.assertNotIn("Nowcast", str(I.environment(g, hot, {}, {})))
         stag = I.environment({"level": -1, "label": "放缓"}, {"level": 1, "label": "偏热"}, {}, {})
         self.assertEqual(stag["name"], "滞胀风险")
 
@@ -383,7 +401,7 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual([x["id"] for x in g["metrics"]][:2], ["core_gdp", "gdp_q"])
         self.assertEqual((m["core_gdp"]["text"], m["core_gdp"]["date"]), ("2.2", "2026Q2"))
         self.assertEqual(m["gdp_q"]["note"], "贡献：消费 +1.4，净出口 -1.3")
-        self.assertEqual(g["head"], "产出接近潜在（GDP 总量 0.8%，净出口拖累 1.3 个百分点）、就业降温")
+        self.assertIn("GDP 总量只有 0.8%，主要是净出口拖累 1.3 个百分点", g["why"][0]["t"])
         self.assertIn("gdp_contrib", dash["charts"])
 
     def test_nfp_row_uses_3m_average(self):

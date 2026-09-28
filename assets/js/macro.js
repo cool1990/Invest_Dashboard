@@ -1,4 +1,4 @@
-// 宏观页分三层：结论（整体环境 + 五句状态）→ 依据（每维几个数 + 对应的图）→ 时间（即将发布、最近发布）。
+// 宏观页分三层：结论（整体环境 + 五个维度的标签与理由）→ 依据（每维几个数 + 对应的图）→ 时间（即将发布、最近发布）。
 "use strict";
 
 const RANGES = [
@@ -40,10 +40,11 @@ function renderRange() {
 // ---- 第一层：结论 ----
 function renderVerdict() {
   const v = DATA.verdict || {};
+  const lines = (v.lines || []).map((x) => `<li><span class="v-k">${esc(x.k)}</span><span>${esc(x.t)}</span></li>`).join("");
   document.getElementById("verdict").innerHTML = `
     <div class="v-label">整体环境</div>
     <h2 class="v-head">${esc(v.headline || "—")}</h2>
-    <div class="v-sub">${esc(v.sub || "")}</div>`;
+    ${lines ? `<ul class="v-lines">${lines}</ul>` : ""}`;
 }
 
 // 判断变化日志：出现第一条「从 A 变成 B」之前不占位置，说明放在页脚
@@ -58,14 +59,19 @@ function renderStateLog() {
       <span class="small muted">${esc(r.trigger || "当天没有匹配到发布，可能是数据修订或市场变量变化")}</span></li>`).join("")}</ul>`;
 }
 
-// 五个维度一行一个：名字 | 一句话 | 标签（靠右），每行格式一样
+// 五个维度一行一个：名字 | 标签 + 理由（每条理由：小结论 + 用哪几个数、对照什么锚点）
 function renderStates() {
-  document.getElementById("states").innerHTML = DATA.dimensions.map((d) => `
-    <a class="st-row" href="#${d.key}">
+  document.getElementById("states").innerHTML = DATA.dimensions.map((d) => {
+    const why = d.why || [];
+    return `<a class="st-row" href="#${d.key}">
       <span class="st-name">${esc(d.name)}</span>
-      <span class="st-head">${esc(d.head)}</span>
-      <span class="st-label tag-state">${esc(d.label)}</span>
-    </a>`).join("");
+      <span class="st-body">
+        <span class="st-label tag-state">${esc(d.label)}</span>
+        ${why.length ? `<ul class="st-why">${why.map((w) => `<li><b>${esc(w.k)}</b>：${esc(w.t)}</li>`).join("")}</ul>`
+          : `<span class="st-head muted">${esc(d.head || "")}</span>`}
+      </span>
+    </a>`;
+  }).join("");
 }
 
 // ---- 第二层：每维的几个数 ----
