@@ -9,6 +9,7 @@ Q4 = 全年 − 前三季累计。利润表本身有单季数，直接用。
 from __future__ import annotations
 
 import json
+import time
 import urllib.request
 from datetime import date
 from pathlib import Path
@@ -17,8 +18,9 @@ from ..csvio import merge, read_csv, write_csv
 from .indicators import SEC
 
 URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
-UA = {"User-Agent": "Invest_Dashboard (github.com/cool1990/Invest_Dashboard) "
-                    "41898282+github-actions[bot]@users.noreply.github.com"}
+# SEC 要求 User-Agent 写成「名称 邮箱」，格式不对会返回 403；另外每秒不超过 10 次请求
+UA = {"User-Agent": "ray raycao2023@gmail.com", "Accept": "application/json"}
+PAUSE_SEC = 0.3
 FIELDS = ["ticker", "item", "end", "value", "concept"]
 
 # 项目 → 按顺序尝试的 us-gaap 科目；取最近期末最新的那个
@@ -113,6 +115,7 @@ def update(path: Path) -> tuple[list[dict], dict[str, str]]:
                 errors[ticker] = "没有找到对应科目"
         except Exception as exc:  # noqa: BLE001
             errors[ticker] = str(exc)[:160]
+        time.sleep(PAUSE_SEC)
     kept = [r for r in old if r["ticker"] not in done]  # 下载成功的公司整体替换（修订会覆盖）
     rows = merge(kept, new, key=lambda r: (r["ticker"], r["item"], r["end"]))
     if new:
