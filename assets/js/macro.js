@@ -47,16 +47,21 @@ function renderVerdict() {
     ${lines ? `<ul class="v-lines">${lines}</ul>` : ""}`;
 }
 
-// 判断变化日志：出现第一条「从 A 变成 B」之前不占位置，说明放在页脚
+// 判断变化日志：放在整体环境下面，默认折叠；每条写什么时候、因为哪条数据、哪一块从什么变成什么、理由
 function renderStateLog() {
-  const changes = (DATA.state_log || []).filter((r) => r.from);
-  const el = document.getElementById("statelog");
-  if (!changes.length) return;
-  el.hidden = false;
-  el.innerHTML = `<div class="v-label">判断变化（近 30 天）</div>
-    <ul class="log">${changes.map((r) => `<li><span class="muted">${esc(r.date)}</span>
-      <span><b>${esc(r.name)}</b>：${esc(r.from)} → <b>${esc(r.to)}</b></span>
-      <span class="small muted">${esc(r.trigger || "当天没有匹配到发布，可能是数据修订或市场变量变化")}</span></li>`).join("")}</ul>`;
+  const log = DATA.state_log || [];
+  const changes = log.filter((r) => r.from);
+  const start = log.length ? log[log.length - 1].date : "";
+  const summary = changes.length ? `近 30 天 ${changes.length} 次变化`
+    : start ? `自 ${start} 开始记录，还没有变化` : "还没有记录";
+  const body = changes.length ? `<ul class="log">${changes.map((r) => `<li>
+      <div><span class="muted">${esc(r.date)}</span> <b>${esc(r.name)}</b>：${esc(r.from)} → <b>${esc(r.to)}</b></div>
+      <div class="small"><span class="muted">因为</span> ${esc(r.trigger || "当天没有匹配到发布，可能是数据修订或市场变量变化")}</div>
+      ${r.head ? `<div class="small"><span class="muted">理由</span> ${esc(r.head)}</div>` : ""}
+    </li>`).join("")}</ul>`
+    : `<p class="small muted">任一维度或整体环境的标签变了，会记在这里：什么时候、因为哪条数据、哪一块从什么变成什么、理由。</p>`;
+  document.getElementById("statelog").innerHTML = `<details><summary><span class="v-label">判断变化日志</span>
+    <span class="small muted">${esc(summary)}</span></summary>${body}</details>`;
 }
 
 // 五个维度一行一个：名字 | 标签 + 理由（每条理由：小结论 + 用哪几个数、对照什么锚点）
@@ -104,38 +109,49 @@ function nowcastHTML() {
 }
 
 // ---- 第三层：时间 ----
-// 即将发布：放在第一屏右边，按北京时间的日期分组；进了规则的那几期下面一行写对判断的影响
+// 今日发布 + 即将发布：放在第一屏右边，按访问时的北京日期分开；每条带重要程度，理由折叠
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
+const bjToday = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+const stars = (n) => `<span class="stars" aria-label="重要程度 ${n} 星">${"★".repeat(n)}<i>${"☆".repeat(5 - n)}</i></span>`;
+
+function calRowHTML(x) {
+  const [, hm] = (x.bj || "").split(" ");
+  const imp = x.importance;
+  const sc = x.scenario && x.scenario.affects && x.scenario.affects.length ? x.scenario : null;
+  const why = imp ? `<details class="why"><summary>${esc(imp.timing)}指标 · 为什么${imp.stars >= 3 ? "重要" : "不太重要"}</summary>
+      <p>${esc(imp.why)}</p>${sc ? `<p class="muted">对本站判断：${esc(sc.text)}</p>` : ""}</details>` : "";
+  return `<li class="${imp && imp.stars >= 4 ? "hi" : ""}">
+    <span class="up-time">${esc(hm || "")}</span>
+    <span class="up-title">${esc(x.title)}${x.ref ? `<small>${esc(x.ref)}</small>` : ""}${imp ? stars(imp.stars) : ""}</span>
+    <span class="up-num"><b>${esc(x.forecast_text || "")}</b><small>${x.previous_text ? `前值 ${esc(x.previous_text)}` : ""}</small></span>
+    ${why}
+  </li>`;
+}
+
 function renderUpcoming() {
   const r = DATA.releases || { upcoming: [] };
   const st = DATA.status || {};
+  const today = bjToday();
+  const rows = r.upcoming.filter((x) => x.bj_date >= today);
+  const todays = rows.filter((x) => x.bj_date === today);
+  document.getElementById("today").innerHTML = todays.length
+    ? `<ul class="up-list">${todays.map(calRowHTML).join("")}</ul>` : `<p class="small muted">无</p>`;
+  const later = rows.filter((x) => x.bj_date > today);
   const el = document.getElementById("upcoming");
-  if (!r.upcoming.length) {
+  if (!later.length) {
     el.innerHTML = `<p class="small muted">${esc(st.calendar_error ? `日历这次没取到：${st.calendar_error}` : "未来几天没有重要发布。")}</p>`;
     return;
   }
-  // 进了规则的指标下面一行：预期落在哪、哪个标签会变；没有情景的只留时间和预期
-  const scen = (sc) => `<div class="scen${sc.changed ? " chg" : ""}">${esc(sc.text)}</div>`;
   const days = new Map();
-  for (const x of r.upcoming) {
-    const [md, hm] = (x.bj || "").split(" ");
-    if (!days.has(md)) days.set(md, []);
-    days.get(md).push({ ...x, hm });
+  for (const x of later) {
+    if (!days.has(x.bj_date)) days.set(x.bj_date, []);
+    days.get(x.bj_date).push(x);
   }
-  const year = (DATA.asof || "").slice(0, 4);
-  el.innerHTML = [...days.entries()].map(([md, xs]) => {
-    const wd = new Date(`${year}-${md}T00:00:00Z`).getUTCDay();
-    return `<div class="up-day">${esc(md)}<span>周${WEEK[wd] ?? ""}</span></div>
-      <ul class="up-list">${xs.map((x) => {
-        const sc = x.scenario && x.scenario.text ? x.scenario : null;
-        return `<li class="${x.impact === "High" ? "hi" : ""}">
-          <span class="up-time">${esc(x.hm || "")}</span>
-          <span class="up-title">${esc(x.title)}${x.ref ? `<small>${esc(x.ref)}</small>` : ""}</span>
-          <span class="up-num"><b>${esc(x.forecast_text || "—")}</b><small>前值 ${esc(x.previous_text || "—")}</small></span>
-          ${sc ? scen(sc) : ""}
-        </li>`;
-      }).join("")}</ul>`;
-  }).join("");
+  el.innerHTML = [...days.entries()].map(([d, xs]) => {
+    const wd = new Date(`${d}T00:00:00Z`).getUTCDay();
+    return `<div class="up-day">${esc(d.slice(5))}<span>周${WEEK[wd] ?? ""}</span></div>
+      <ul class="up-list">${xs.map(calRowHTML).join("")}</ul>`;
+  }).join("") + (r.importance_rule ? `<p class="small muted rule">${esc(r.importance_rule)}</p>` : "");
 }
 
 // 最近发布：还没有累积数据时整段不显示
@@ -155,11 +171,7 @@ function renderRecent() {
 
 // ---- 页脚：方法与说明 ----
 function renderNotes() {
-  const log = DATA.state_log || [];
   const bits = [`<p>${esc(DATA.method || "")}</p>`];
-  if (log.length && !log.some((r) => r.from)) {
-    bits.push(`<p>判断变化日志从 ${esc(log[log.length - 1].date)} 开始记录；任一维度或整体环境的状态标签变了，会出现在页面最上面，并注明当时发布了什么数据。</p>`);
-  }
   bits.push("<p>由固定规则按经济锚点判断，仅供参考，不构成投资建议。</p>");
   document.getElementById("notes").innerHTML = bits.join("");
 }

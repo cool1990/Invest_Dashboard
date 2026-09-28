@@ -51,7 +51,8 @@ def update_state_log(dash: dict, write: bool) -> list[dict]:
             continue
         rel = [r for r in recent if key == "overall" or r.get("dim") == key]
         trigger = "；".join(
-            f"{r['title']} {r.get('actual_text', '')}" + (f"（预期 {r['forecast_text']}）" if r.get("forecast_text") else "")
+            f"{r.get('bj', '')} {r['title']} {r.get('actual_text', '')}".strip()
+            + (f"（预期 {r['forecast_text']}）" if r.get("forecast_text") else "")
             for r in rel) if prev else "开始记录"
         rows.append({"date": today, "dim": key, "name": name, "from": prev["to"] if prev else "",
                      "to": label, "head": head, "trigger": trigger})

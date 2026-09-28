@@ -255,6 +255,23 @@ class ScenarioTest(unittest.TestCase):
         # 环比本身没有标签，只写会不会改通胀和整体环境
         self.assertEqual(up["core_pce_mom"]["scenario"]["text"], "预期 0.3%，通胀仍为「偏热」，整体环境不变")
 
+    def test_importance_and_today(self):
+        from datetime import datetime, timezone
+
+        from pipeline.macro import importance
+        self.assertEqual(importance.rate("Non-Farm Employment Change")["stars"], 5)
+        self.assertEqual(importance.rate("Final GDP q/q")["stars"], 1)
+        self.assertEqual(importance.rate("FOMC Member Waller Speaks")["stars"], 2)
+        self.assertIsNone(importance.rate("Something Else"))
+        # 北京时间同一天、已经发布的条目也留在日历里，标 done，给「今日发布」用
+        now = datetime(2026, 9, 30, 13, 0, tzinfo=timezone.utc)  # 北京时间 09-30 21:00
+        dash = build_dashboard(self.raw, [], date(2026, 9, 30), self.events, [], now)
+        rows = {r["key"]: r for r in dash["releases"]["upcoming"]}
+        self.assertTrue(rows["core_pce_mom"]["done"])
+        self.assertEqual(rows["core_pce_mom"]["bj_date"], "2026-09-30")
+        self.assertEqual(rows["core_pce_mom"]["importance"]["stars"], 4)
+        self.assertEqual(rows["nfp"]["bj_date"], "2026-10-02")
+
     def test_revision_has_no_scenario(self):
         # 已经公布过的期间（例如 GDP 终值）只是修订：日历上只留时间和预期
         raw = dict(self.raw)
