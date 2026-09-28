@@ -78,7 +78,7 @@ function chgHTML(c) {
 function metricsHTML(d) {
   const rows = (d.metrics || []).map((m) => `
     <div class="ev">
-      <span class="ev-name">${m.chart ? `<a href="#c-${esc(m.chart)}">${esc(m.name)}</a>` : esc(m.name)}${m.model ? ' <span class="tag">预测</span>' : ""}${m.note ? `<div class="small muted">${esc(m.note)}</div>` : ""}</span>
+      <span class="ev-name">${m.chart ? `<a href="#c-${esc(m.chart)}">${esc(m.name)}</a>` : esc(m.name)}${m.model ? ' <span class="tag">预测</span>' : ""}${m.ref ? ' <span class="tag tag-ref">参考</span>' : ""}${m.note ? `<div class="small muted">${esc(m.note)}</div>` : ""}</span>
       <span class="ev-val"><i class="m-label">最新</i><b>${esc(m.text)}</b><small>${esc(m.unit)}</small><div class="small muted">${esc(m.date)}</div></span>
       <span class="ev-chg"><i class="m-label">较上期</i>${chgHTML(m.chg)}</span>
       <span class="ev-anchor"><i class="m-label">对照</i>${esc(m.anchor || "—")}</span>

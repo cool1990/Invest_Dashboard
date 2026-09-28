@@ -290,6 +290,20 @@ class InterpretTest(unittest.TestCase):
         only = I.growth_state({"gdpnow": 5.0, "nfp3": 71})
         self.assertEqual(only["output"], "偏强")
         self.assertIn("按 GDPNow 预测", only["head"])
+        # 有核心 GDP 时以它定档；GDP 总量被净出口拖到另一档时，句子里写明
+        dragged = I.growth_state({"gdp_q": 0.8, "core_gdp": 2.1, "nfp3": 71,
+                                  "contrib": {"pce": 1.3, "fixed": 0.4, "inv": 0.3, "gov": 0.2, "nx": -1.4}})
+        self.assertEqual(dragged["output"], "接近潜在")
+        self.assertEqual(dragged["head"], "产出接近潜在（GDP 总量 0.8%，净出口拖累 1.4 个百分点）、就业降温")
+        self.assertIn("以核心为准", dragged["anchors"]["gdp_q"])
+        # 反过来：库存把总量抬高，核心需求其实偏弱
+        lifted = I.growth_state({"gdp_q": 2.6, "core_gdp": 1.0, "nfp3": 71,
+                                 "contrib": {"inv": 1.1, "nx": 0.5, "gov": -0.2}})
+        self.assertEqual(lifted["output"], "低于潜在")
+        self.assertIn("库存拉高 1.1 个百分点", lifted["head"])
+        # 分档相同时不加注
+        same = I.growth_state({"gdp_q": 1.6, "core_gdp": 2.2, "nfp3": 71})
+        self.assertEqual(same["head"], "产出接近潜在、就业降温")
         weak = I.growth_state({"gdpnow": 0.3, "gdp_q": 0.8, "nfp3": -20, "unrate_chg12": 0.6, "sahm": 0.6})
         self.assertEqual(weak["label"], "收缩风险")
 
@@ -356,6 +370,21 @@ class DashboardTest(unittest.TestCase):
         raw = {"UNRATE": [(d, 4.0) for d in ms]}
         m = {x["id"]: x for x in build_dashboard(raw, [], date(2026, 9, 28))["dimensions"][0]["metrics"]}
         self.assertEqual(m["unrate"]["chg"]["text"], "持平")
+
+    def test_core_gdp_rows(self):
+        qs = [date(2025, m, 1) for m in (4, 7, 10)] + [date(2026, 1, 1), date(2026, 4, 1)]
+        raw = {"GDPC1": [(d, 100 * 1.002 ** i) for i, d in enumerate(qs)],  # 每季约 0.8% 年化
+               "PB0000031Q225SBEA": [(d, 2.0 + i * 0.05) for i, d in enumerate(qs)],
+               "A019RY2Q224SBEA": [(d, -1.3) for d in qs], "DPCERY2Q224SBEA": [(d, 1.4) for d in qs],
+               "PAYEMS": [(d, 1000.0 + 70 * i) for i, d in enumerate(months(date(2025, 1, 1), 20))]}
+        dash = build_dashboard(raw, [], date(2026, 9, 28))
+        g = dash["dimensions"][0]
+        m = {x["id"]: x for x in g["metrics"]}
+        self.assertEqual([x["id"] for x in g["metrics"]][:2], ["core_gdp", "gdp_q"])
+        self.assertEqual((m["core_gdp"]["text"], m["core_gdp"]["date"]), ("2.2", "2026Q2"))
+        self.assertEqual(m["gdp_q"]["note"], "贡献：消费 +1.4，净出口 -1.3")
+        self.assertEqual(g["head"], "产出接近潜在（GDP 总量 0.8%，净出口拖累 1.3 个百分点）、就业降温")
+        self.assertIn("gdp_contrib", dash["charts"])
 
     def test_nfp_row_uses_3m_average(self):
         # 格子里写 3 个月均值（规则用的数），单月放备注

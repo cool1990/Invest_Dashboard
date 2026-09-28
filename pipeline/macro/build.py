@@ -119,10 +119,19 @@ class Metric:
     chart: str | None = None
     note: str = ""
     model: bool = False  # 模型预测，不进判断
+    ref: bool = False  # 已公布的数据，但只作参考，不进判断
 
 
 def signed(fmt: str) -> str:
     return fmt if "+" in fmt else fmt.replace("{:", "{:+", 1)
+
+
+def gdp_mix(contrib: dict[str, Series], q: date) -> str:
+    """某一季 GDP 增速的分项贡献，写成一行备注。"""
+    names = (("pce", "消费"), ("fixed", "固定投资"), ("inv", "库存"), ("gov", "政府"), ("nx", "净出口"))
+    parts = [(nm, dict(contrib[k]).get(q)) for k, nm in names]
+    parts = [f"{nm} {v:+.1f}" for nm, v in parts if v is not None]
+    return "贡献：" + "，".join(parts) if parts else ""
 
 
 def period_text(d: date, freq: str) -> str:
@@ -187,6 +196,10 @@ class MacroBuilder:
         annual = [(date(y, 1, 1), sum(v) / 4) for y, v in sorted(by_year.items()) if len(v) == 4]
         gdp_annual = ts.pct_change(annual, 1, "A")
         gdpnow = self.s("GDPNOW")
+        core_gdp = self.s("PB0000031Q225SBEA")
+        contrib = {k: self.s(sid) for k, sid in (
+            ("pce", "DPCERY2Q224SBEA"), ("fixed", "A007RY2Q224SBEA"), ("inv", "A014RY2Q224SBEA"),
+            ("gov", "A822RY2Q224SBEA"), ("nx", "A019RY2Q224SBEA"))}
 
         payems = self.m("PAYEMS", "last")
         nfp = ts.diff(payems, 1, "M")
@@ -244,9 +257,18 @@ class MacroBuilder:
 
         groups = [
             ("产出", self.add(
-                Chart("gdp_q", "实际 GDP：季环比年化与同比", "%", [
-                    Line("季环比年化", gdp_qoq, "bar"), Line("同比", gdp_yoy)],
-                    note="季度数据，来源 BEA。柱为季环比年化，线为同比。", core=True),
+                Chart("gdp_q", "实际 GDP 与核心 GDP：季环比年化", "%", [
+                    Line("GDP 季环比年化", gdp_qoq, "bar"), Line("核心 GDP 季环比年化", core_gdp),
+                    Line("GDP 同比", gdp_yoy, dash=True)],
+                    note="季度数据，来源 BEA。核心 GDP = 对私人国内购买者的最终销售（消费 + 固定投资），"
+                         "去掉了净出口、库存和政府，更能代表内需冷热。", core=True),
+                Chart("gdp_contrib", "GDP 增速按分项贡献", "百分点", [
+                    Line("消费", contrib["pce"], "bar"), Line("固定投资", contrib["fixed"], "bar"),
+                    Line("库存", contrib["inv"], "bar"), Line("政府", contrib["gov"], "bar"),
+                    Line("净出口", contrib["nx"], "bar"), Line("GDP 季环比年化", gdp_qoq)],
+                    stacked="bar", start=date(2010, 1, 1), core=True,
+                    note="柱子之和 ≈ GDP 季环比年化（BEA 公布的贡献值，年化百分点）。"
+                         "净出口和库存常常一个季度大正、下个季度大负，比如抢在关税前进口。"),
                 Chart("gdpnow", "GDPNow：本季度实时预测", "%", [Line("GDPNow", gdpnow)],
                       note="亚特兰大联储对当季实际 GDP 环比年化的模型预测。", start=date(2014, 1, 1)),
                 Chart("gdp_a", "实际 GDP：年度增速", "%", [Line("年度增速", gdp_annual, "bar")],
@@ -304,18 +326,29 @@ class MacroBuilder:
             )),
         ]
 
+        rpce_3m = ts.pct_change(self.m("PCEC96", "last"), 3, "M", annualize=12)
         metrics = [
-            Metric("gdp_q", "上季实际 GDP（季环比年化）", gdp_qoq, "%", "{:.1f}", "Q", "gdp_q"),
+            Metric("core_gdp", "上季核心 GDP（季环比年化）", core_gdp, "%", "{:.1f}", "Q", "gdp_q",
+                   note="对私人国内购买者的最终销售：消费 + 固定投资"),
+            Metric("gdp_q", "上季实际 GDP（季环比年化）", gdp_qoq, "%", "{:.1f}", "Q", "gdp_contrib",
+                   note=gdp_mix(contrib, gdp_qoq[-1][0]) if gdp_qoq else ""),
             Metric("gdpnow", "GDPNow 本季预测", gdpnow, "%", "{:.1f}", "Q", "gdpnow", model=True),
             Metric("nfp3", "非农新增就业 3 个月均值", nfp3, "千人", "{:,.0f}", chart="nfp",
                    note=f"单月 {nfp[-1][1]:,.0f} 千人（{period_text(nfp[-1][0], 'M')}）" if nfp else ""),
             Metric("unrate", "失业率", unrate, "%", "{:.1f}", chart="unrate"),
+            Metric("real_pce", "实际消费支出（3 个月年化）", rpce_3m, "%", "{:.1f}", chart="real_pce", ref=True),
+            Metric("core_capex", "核心资本品订单（3 个月均值同比）", core_capex_yoy, "%", "{:.1f}",
+                   chart="durables", ref=True, note="非国防、除飞机"),
         ]
+        # 核心 GDP 和分项贡献只取与 GDP 同一季度的值，避免拿新旧两个季度比
+        q = gdp_qoq[-1][0] if gdp_qoq else None
+        core_q = dict(core_gdp).get(q) if q else (core_gdp[-1][1] if core_gdp else None)
         self.inputs["growth"] = {
             "gdpnow": gdpnow[-1][1] if gdpnow else None, "gdp_q": gdp_qoq[-1][1] if gdp_qoq else None,
             "nfp3": nfp3[-1][1] if nfp3 else None, "nfp3_ago": nfp3[-2][1] if len(nfp3) >= 2 else None,
             "unrate_chg12": ts.diff(unrate, 12, "M")[-1][1] if len(unrate) > 12 else None,
             "sahm": sahm[-1][1] if sahm else None,
+            "core_gdp": core_q, "contrib": {k: dict(v).get(q) for k, v in contrib.items()} if q else {},
         }
         self.ctx.update({"nfp": nfp, "unrate": unrate, "gdp_qoq": gdp_qoq})
         state = I.growth_state(self.inputs["growth"])
@@ -857,7 +890,8 @@ class MacroBuilder:
                    "dir": "flat" if flat else "up" if v > base else "down"}
         return {"id": m.id, "name": m.name, "text": m.fmt.format(v), "unit": m.unit,
                 "date": period_text(d, m.freq), "chg": chg, "anchor": anchors.get(m.id, ""),
-                "note": m.note, "chart": m.chart if m.chart in self.charts else None, "model": m.model}
+                "note": m.note, "chart": m.chart if m.chart in self.charts else None, "model": m.model,
+                "ref": m.ref}
 
     def build(self) -> dict:
         dims = [("growth", "增长", self.growth), ("inflation", "通胀", self.inflation),

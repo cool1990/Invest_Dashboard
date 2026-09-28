@@ -66,25 +66,51 @@ def _hi_lo(x: float, digits: int = 2, unit: str = " 个百分点") -> str:
     return f"{'高' if x >= 0 else '低'} {abs(x):.{digits}f}{unit}"
 
 
+def _output_band(x: float | None) -> tuple[int | None, str]:
+    """季环比年化增速对约 2% 的潜在增速分档。按公布精度（一位小数）比：页面显示 1.5 就按 1.5 算。"""
+    if x is None:
+        return None, "数据不足"
+    x = round(x, 1)
+    if x >= 2.5:
+        return 1, "偏强"
+    if x >= 1.5:
+        return 0, "接近潜在"
+    if x >= 0.5:
+        return -1, "低于潜在"
+    return -1, "停滞或收缩"
+
+
+# GDP 里和内需冷热关系不大、季度波动又大的几块：GDP 与核心 GDP 分档不同时，用它们解释差在哪
+NOISE = (("nx", "净出口"), ("inv", "库存"), ("gov", "政府"))
+
+
+def gap_driver(gdp: float, core: float, contrib: dict) -> str:
+    """GDP 总量比核心 GDP 高（低）时，在净出口、库存、政府里找往同一方向贡献最大的那项。"""
+    up = gdp > core
+    parts = [(name, contrib[k]) for k, name in NOISE if contrib.get(k) is not None and (contrib[k] > 0) == up]
+    if not parts:
+        return ""
+    name, c = max(parts, key=lambda p: abs(p[1]))
+    return f"{name}{'拉高' if c > 0 else '拖累'} {abs(c):.1f} 个百分点"
+
+
 def growth_state(v: dict) -> dict:
-    now, last = v.get("gdpnow"), v.get("gdp_q")
+    now, last, core = v.get("gdpnow"), v.get("gdp_q"), v.get("core_gdp")
+    contrib = v.get("contrib") or {}
     nfp3 = v.get("nfp3")
     u12, sahm = v.get("unrate_chg12"), v.get("sahm")
-    # 产出只按已公布的实际 GDP 判断；GDPNow 是模型预测，只在还没有实际值时顶上
-    by_model = last is None and now is not None
-    out = now if by_model else last
-    if out is not None:
-        out = round(out, 1)  # 按公布精度（一位小数）判断：页面显示 1.5 就按 1.5 算，不按链式指数算出的 1.48
-    if out is None:
-        o, o_txt = None, "数据不足"
-    elif out >= 2.5:
-        o, o_txt = 1, "偏强"
-    elif out >= 1.5:
-        o, o_txt = 0, "接近潜在"
-    elif out >= 0.5:
-        o, o_txt = -1, "低于潜在"
-    else:
-        o, o_txt = -1, "停滞或收缩"
+    # 产出只按已公布的数据判断，优先看核心 GDP（对私人国内购买者的最终销售 = 消费 + 固定投资）：
+    # GDP 总量里的净出口、库存、政府季度波动大，和内需冷热关系不大，抢进口一个季度就能把总量压低或抬高。
+    # 核心 GDP 与 GDP 分档不同时，以核心 GDP 定档，句子里写明总量被哪一块拉低或拉高。
+    # 两个都没有时才用 GDPNow（模型预测）顶上。
+    by_model = last is None and core is None and now is not None
+    o, o_txt = _output_band(core if core is not None else last if last is not None else now)
+    note, driver = "", ""
+    if core is not None and last is not None and _output_band(last)[1] != o_txt:
+        driver = gap_driver(last, core, contrib)
+        note = f"GDP 总量 {round(last, 1):.1f}%" + (f"，{driver}" if driver else "")
+    elif by_model:
+        note = "按 GDPNow 预测"
     if nfp3 is None:
         l, l_txt = None, "数据不足"
     elif (sahm is not None and sahm >= 0.5) or (u12 is not None and u12 >= 0.5) or nfp3 < 0:
@@ -106,9 +132,19 @@ def growth_state(v: dict) -> dict:
         label = {1: "扩张偏强", 0: "接近潜在", -1: "放缓"}.get(level, "数据不足")
         if o_txt == "停滞或收缩" or l_txt == "恶化":
             label = "收缩风险"
-    head = f"产出{o_txt}{'（按 GDPNow 预测）' if by_model else ''}、就业{l_txt}" + ("：增长分化" if split else "")
+    head = f"产出{o_txt}{f'（{note}）' if note else ''}、就业{l_txt}" + ("：增长分化" if split else "")
+    bands = "潜在增速约 2%：≥ 2.5 偏强，1.5–2.5 接近潜在，< 1.5 低于潜在"
+    if core is None:
+        gdp_anchor = bands
+    elif note:
+        gdp_anchor = "与核心 GDP 分档不同，以核心为准" + (f"：{driver}" if driver else "")
+    else:
+        gdp_anchor = "与核心 GDP 分档相同"
     anchors = {
-        "gdp_q": "潜在增速约 2%：≥ 2.5 偏强，1.5–2.5 接近潜在，< 1.5 低于潜在",
+        "core_gdp": bands,
+        "gdp_q": gdp_anchor,
+        "real_pce": "月度消费，两次 GDP 之间的更新；不进判断",
+        "core_capex": "设备投资的先行指标；不进判断",
         "nfp3": "维持失业率不变约需 50–100 千人；≥ 150 且失业率没升为强",
         "unrate": f"较一年前 {_f(u12, '{:+.1f}')} 个百分点，Sahm {_f(sahm, '{:.2f}')}（0.5 触发）",
     }
