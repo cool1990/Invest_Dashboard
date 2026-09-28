@@ -32,6 +32,11 @@
         <div class="muted small" id="semis-asof">读取中…</div>
         <div class="hub-dims" id="semis-dims"></div>
       </a>
+      <a class="card" href="us.html" style="color:inherit;text-decoration:none">
+        <h2>美股</h2>
+        <div class="muted small" id="us-asof">读取中…</div>
+        <div class="hub-dims" id="us-dims"></div>
+      </a>
       <a class="card" href="crypto.html" style="color:inherit;text-decoration:none">
         <h2>加密货币</h2>
         <div class="muted small" id="crypto-asof">读取中…</div>
@@ -55,6 +60,12 @@
         `<span style="grid-column:1/-1;font-weight:600">${esc(d.verdict?.headline || "")}</span>` +
         d.dimensions.map((x) => `<span>${esc(x.name)}</span><span class="muted" style="grid-column:2/-1">${esc(x.label)}</span>`).join("");
     }).catch(() => { document.getElementById("semis-asof").textContent = "数据还没生成"; });
+    loadJSON("data/us/dashboard.json").then((d) => {
+      document.getElementById("us-asof").textContent = "数据更新于 " + (d.status?.updated_at || d.asof).replace("T", " ").replace("Z", " UTC");
+      document.getElementById("us-dims").innerHTML =
+        `<span style="grid-column:1/-1;font-weight:600">${esc(d.verdict?.headline || "")}</span>` +
+        d.dimensions.map((x) => `<span>${esc(x.name)}</span><span class="muted" style="grid-column:2/-1">${esc(x.label)}</span>`).join("");
+    }).catch(() => { document.getElementById("us-asof").textContent = "数据还没生成"; });
     loadJSON("data/crypto/dashboard.json").then((d) => {
       document.getElementById("crypto-asof").textContent = "数据更新于 " + (d.status?.updated_at || d.asof).replace("T", " ").replace("Z", " UTC");
       document.getElementById("crypto-dims").innerHTML =

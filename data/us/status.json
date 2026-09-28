@@ -1,0 +1,52 @@
+{
+ "updated_at": "2026-09-28T12:09:23Z",
+ "series": {
+  "CPATAX": {
+   "ok": true,
+   "first_obs": "1947-01-01",
+   "last_obs": "2026-04-01",
+   "fetched_at": "2026-09-28T12:09:22Z",
+   "last_ok_at": "2026-09-28T12:09:22Z",
+   "name": "税后企业利润",
+   "unit": "十亿美元（年化）",
+   "freq": "季"
+  },
+  "NCBEILQ027S": {
+   "ok": true,
+   "first_obs": "1945-10-01",
+   "last_obs": "2026-04-01",
+   "fetched_at": "2026-09-28T12:09:22Z",
+   "last_ok_at": "2026-09-28T12:09:22Z",
+   "name": "非金融企业股权市值",
+   "unit": "百万美元",
+   "freq": "季"
+  },
+  "SP500": {
+   "ok": true,
+   "first_obs": "2016-09-26",
+   "last_obs": "2026-09-25",
+   "fetched_at": "2026-09-28T12:09:22Z",
+   "last_ok_at": "2026-09-28T12:09:22Z",
+   "name": "标普 500",
+   "unit": "指数",
+   "freq": "日"
+  },
+  "VIXCLS": {
+   "ok": true,
+   "first_obs": "1990-01-02",
+   "last_obs": "2026-09-22",
+   "fetched_at": "2026-09-28T12:09:22Z",
+   "last_ok_at": "2026-09-28T12:09:22Z",
+   "name": "VIX",
+   "unit": "指数",
+   "freq": "日"
+  }
+ },
+ "errors": {
+  "earnings": null,
+  "sentiment": null,
+  "calendar": null,
+  "margin": null,
+  "concentration": null
+ }
+}
