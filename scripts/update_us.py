@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 
 from pipeline import fred, statelog  # noqa: E402
 from pipeline.csvio import read_csv  # noqa: E402
-from pipeline.us import finra, holdings, oldsite  # noqa: E402
+from pipeline.us import finra, holdings, insight, oldsite  # noqa: E402
 from pipeline.us.build import Sources, build_dashboard  # noqa: E402
 from pipeline.us.indicators import FRED, FRED_READ  # noqa: E402
 
@@ -35,6 +35,7 @@ SOURCE_NAMES = {
     "margin": "融资余额（FINRA）",
     "concentration": "前十大权重（ETF 持仓）",
     "manual": "手工录入（标普远期市盈率）",
+    "insight": "标普 500 盈利周报",
 }
 
 
@@ -63,9 +64,21 @@ def main() -> int:
     raw = fred.load_all(list(ids) + list(FRED_READ), RAW_FRED)
     olddata = oldsite.load(RAW)
     manual = read_csv(OUT / "manual.csv")
+    insight_path = RAW / "earnings_insight.csv"
+    weekly = insight.load(insight_path)
+    fresh = insight.parse_notes(RAW / "insight")
+    if fresh:
+        weekly = insight.merge(weekly, fresh)
+        insight.write(insight_path, weekly)
+        errors["insight"] = None
+    elif not weekly:
+        errors["insight"] = "还没有 data/raw/us/earnings_insight.csv"
+    else:
+        errors["insight"] = None
     src = Sources(fred=raw, earnings=olddata["earnings"], sentiment=olddata["sentiment"],
                   calendar=olddata["calendar"], margin=finra.load(RAW / "margin.csv"),
-                  concentration=holdings.load(RAW / "concentration.csv"), manual=manual)
+                  concentration=holdings.load(RAW / "concentration.csv"), manual=manual,
+                  insight=weekly)
     dash = build_dashboard(src, today, datetime.now(timezone.utc))
 
     for sid, (name, unit, freq) in FRED.items():
@@ -81,6 +94,7 @@ def main() -> int:
         "margin": last_obs(src.margin, "date"),
         "concentration": last_obs(src.concentration, "date"),
         "manual": last_obs(manual, "date"),
+        "insight": last_obs(weekly, "date"),
     }
     sources = []
     for key, name in SOURCE_NAMES.items():
@@ -114,7 +128,7 @@ def main() -> int:
     for s in sources:
         if not s["ok"] or s["note"]:
             print(f"  {s['name']}：{s['note'] or '失败'}")
-    return 0 if (ok or olddata["earnings"]) else 1
+    return 0 if (ok or olddata["earnings"] or weekly) else 1
 
 
 if __name__ == "__main__":

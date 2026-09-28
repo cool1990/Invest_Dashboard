@@ -11,7 +11,7 @@ from xml.sax.saxutils import escape
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from pipeline.us import build as B  # noqa: E402
-from pipeline.us import finra, holdings, importance, oldsite  # noqa: E402
+from pipeline.us import finra, holdings, importance, insight, oldsite  # noqa: E402
 from pipeline.us import interpret as I  # noqa: E402
 from pipeline.us.indicators import CORE  # noqa: E402
 from pipeline.us.xlsxio import read_sheet  # noqa: E402
@@ -31,21 +31,43 @@ def _earn_rows(revs, pes, signals):
 
 
 class InterpretTest(unittest.TestCase):
-    def test_revision_bands_and_spread(self):
-        up = I.earnings_state({"rev": 2.01, "n": 8, "n_up": 5, "n_down": 1})
-        self.assertEqual(up["label"], "上修")
-        self.assertEqual(up["level"], 1)
-        self.assertIn("扩散", up["summary"])
+    def test_index_earnings_bands(self):
+        # 净占比刚好 −10% 算下修；更小只记小幅，不改档
+        mild = I.earnings_state({
+            "source": "LSEG", "quarter": "Q2 2026", "reported_pct": 99.2, "eps_above": 86.1,
+            "eps_surprise": 8.5, "q_net": 25, "q_pos": 57, "y_growth": 35.3, "y_prev": 35.0,
+            "q_growth": 53.7, "rev_up": 220, "rev_down": 246,
+        })
+        self.assertEqual(mild["level"], 0)
+        self.assertIn("兑现强", mild["label"])
+        self.assertIn("指引偏多", mild["label"])
+        self.assertIn("小幅净下修", mild["label"])
+        self.assertIn("但", mild["summary"])
+        self.assertNotIn("上修全年", mild["summary"])
 
-        flat = I.earnings_state({"rev": 2.0, "n": 8, "n_up": 4, "n_down": 1})
-        self.assertEqual(flat["label"], "平稳")  # 高于 +2% 才算上修
-        self.assertIn("强上修", flat["summary"])
-
-        down = I.earnings_state({"rev": -2.01, "n": 8, "n_up": 0, "n_down": 4})
-        self.assertEqual(down["label"], "下修")
+        down = I.earnings_state({"source": "LSEG", "rev_up": 40, "rev_down": 60, "y_growth": 10, "y_prev": 12})
         self.assertEqual(down["level"], -1)
+        self.assertIn("下修", down["label"])
 
-        self.assertEqual(I.earnings_state({"rev": None})["label"], "数据不足")
+        # 年度增速较上一篇刚好 0.5 个百分点，还不到上修
+        flat = I.earnings_state({"source": "FactSet", "y_growth": 30.0, "y_prev": 29.5, "reported_pct": 88, "eps_above": 86})
+        self.assertEqual(flat["level"], 0)
+        self.assertIn("修正持平", flat["label"])
+        up = I.earnings_state({"source": "FactSet", "y_growth": 30.0, "y_prev": 29.4})
+        self.assertEqual(up["level"], 1)
+
+        # 换源那一周，年度增速跳 4 个百分点也不算上修
+        switched = I.earnings_state({"source": "LSEG", "source_break": True, "y_growth": 34, "y_prev": None,
+                                     "reported_pct": 91, "eps_above": 84.8, "eps_surprise": 8.4, "q_net": 22})
+        self.assertEqual(switched["level"], 0)
+        self.assertIn("修正不可比", switched["label"])
+        self.assertNotIn("上修", switched["label"])
+
+        early = I.earnings_state({"source": "FactSet", "reported_n": 19, "eps_above": 84, "q_net": -7})
+        self.assertIn("披露刚开始", early["label"])
+        self.assertNotIn("兑现强", early["label"])
+
+        self.assertEqual(I.earnings_state({})["label"], "数据不足")
 
     def test_erp_bands(self):
         # 25 倍 → 盈利收益率 4%；实际利率 2.5% → 溢价 1.5%，贵
@@ -89,7 +111,7 @@ class InterpretTest(unittest.TestCase):
         self.assertNotIn("面窄", calm["label"])
 
     def test_environment_ignores_sentiment(self):
-        earn = I.earnings_state({"rev": 3, "n": 8, "n_up": 1, "n_down": 1})
+        earn = I.earnings_state({"source": "FactSet", "y_growth": 30, "y_prev": 28, "reported_pct": 88, "eps_above": 86})
         val = I.valuation_state({"pe": 25, "erp": 1, "real": 3, "manual": False})
         sent = I.sentiment_state({"vix": 40, "breadth": 20, "margin_yoy": -30, "top10": 15})
         env = I.environment(earn, val, sent)
@@ -225,11 +247,11 @@ class BuildTest(unittest.TestCase):
         )
         dash = B.build_dashboard(src, date(2026, 9, 28), datetime(2026, 9, 28, 3, tzinfo=timezone.utc))
         labels = {d["key"]: d["label"] for d in dash["dimensions"]}
-        self.assertEqual(labels["earnings"], "平稳")  # 中位数约 0.35，不是被 NVDA 的 19% 拉成上修
+        self.assertEqual(labels["earnings"], "数据不足")  # 没有标普周报时，不用个股中位数顶上
         self.assertEqual(labels["valuation"], "贵")
         self.assertIn("杠杆扩张", labels["sentiment"])
         self.assertIn("集中", labels["sentiment"])
-        self.assertEqual(dash["verdict"]["name"], "估值偏贵")
+        self.assertEqual(dash["verdict"]["name"], "数据不足")
         tickers = [n["ticker"] for n in dash["names"]]
         self.assertEqual(tickers[0], "AAPL")
         self.assertIn("IREN", tickers)
@@ -251,6 +273,81 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(val["label"], "便宜")  # 100/15 - 1 = 5.67 > 4
         ids = [m["id"] for m in val["metrics"]]
         self.assertIn("basket_pe", ids)
+
+    def test_index_week_overrides_basket_and_splits_source(self):
+        rows = _earn_rows([1] * 8, [36] * 8, ["强上修"] * 8)  # 个股中位数会把估值打成很贵，指数不采用
+        def week(when, source, **kw):
+            base = {"date": when, "source": source, "quarter": "Q2 2026", "reported_kind": "pct",
+                    "theme": "", "judgment": "", "q_guide": 100, "q_net": 20, "q_pos": 60,
+                    "y_guide": None, "y_net": None, "y_pos": None, "reported": 90, "eps_above": 85,
+                    "eps_surprise": 8, "forward_pe": 20, "spx_chg": None, "fwd_eps_chg": None,
+                    "rev_up": None, "rev_down": None, "q_growth": 50, "y_growth": 30}
+            base.update(kw)
+            return base
+        src = B.Sources(
+            fred={"DFII10": [(date(2026, 9, 25), 2.85)], "SP500": [], "VIXCLS": [], "CPATAX": [],
+                  "NCBEILQ027S": [], "GDP": []},
+            earnings=rows,
+            insight=[
+                week("2026-08-07", "FactSet", q_growth=50.4, y_growth=30.0, reported=88, eps_above=86,
+                     eps_surprise=29.2, forward_pe=20.0, y_pos=64, fwd_eps_chg=4.7),
+                week("2026-09-18", "LSEG", q_growth=53.4, y_growth=35.0, reported=99.2, eps_above=85.7,
+                     eps_surprise=8.4, forward_pe=20.0, q_net=24, q_pos=56.6),
+                week("2026-09-25", "LSEG", q_growth=53.7, y_growth=35.3, reported=99.2, eps_above=86.1,
+                     eps_surprise=8.5, forward_pe=20.2, q_net=25, q_pos=57.0,
+                     theme="FY1 修正转为净下修（220上/246下）", judgment="兑现强，但修正转弱"),
+            ],
+        )
+        dash = B.build_dashboard(src, date(2026, 9, 28))
+        labels = {d["key"]: d["label"] for d in dash["dimensions"]}
+        self.assertIn("小幅净下修", labels["earnings"])
+        self.assertIn("兑现强", labels["earnings"])
+        self.assertEqual(labels["valuation"], "大致合理")  # 100/20.2 − 2.85 ≈ 2.10，不是个股 36 倍
+        self.assertEqual(dash["verdict"]["name"], "中性")
+        names = [s["name"] for s in dash["charts"]["q_growth"]["series"]]
+        self.assertEqual(names, ["FactSet", "LSEG"])
+        self.assertIn("口径", dash["charts"]["eps_surprise"]["note"])
+        self.assertEqual(dash["insight"]["weeks"][0]["date"], "2026-09-25")
+        self.assertIn("220上/246下", dash["insight"]["weeks"][0]["theme"])
+        # 手工标普远期市盈率仍优先于周报
+        src.manual = [{"date": "2026-09-25", "key": "spx_fwd_pe", "value": "12"}]
+        over = B.build_dashboard(src, date(2026, 9, 28))
+        val = next(d for d in over["dimensions"] if d["key"] == "valuation")
+        self.assertEqual(val["label"], "便宜")  # 100/12 − 2.85 ≈ 5.5，周报的 20.2 倍不再作数
+        self.assertEqual(next(m["text"] for m in val["metrics"] if m["id"] == "pe"), "12.0")
+
+
+class InsightParseTest(unittest.TestCase):
+    def test_frontmatter_count_vs_percent_and_revision_counts(self):
+        text = """---
+报告日期: 2026-09-25
+跟踪季度: Q2 2026
+季度EPS growth: 53.7%
+年度EPS growth: 35.3%
+季度指引: 114
+季度Net: 25
+季度Positive %: 57.0%
+实际披露: 99.2%
+EPS Above %: 86.1%
+EPS Surprise %: "+8.5%"
+Forward P/E: 20.2
+本周主线: 修正转为净下修（220上/246下）
+综合判断: "兑现仍强。"
+---
+正文
+"""
+        row = insight.parse_note(text)
+        self.assertEqual(row["source"], "LSEG")
+        self.assertEqual(row["reported_kind"], "pct")
+        self.assertEqual(row["q_growth"], 53.7)
+        self.assertEqual(row["eps_surprise"], 8.5)
+        self.assertEqual((row["rev_up"], row["rev_down"]), (220, 246))
+        self.assertEqual(row["judgment"], "兑现仍强。")
+        early = insight.parse_note("---\n报告日期: 2026-01-09\n实际披露: \"19\"\nEPS Surprise %:\n---\n")
+        self.assertEqual(early["source"], "FactSet")
+        self.assertEqual(early["reported_kind"], "count")
+        self.assertEqual(early["reported"], 19)
+        self.assertIsNone(early["eps_surprise"])
 
 
 class ImportanceTest(unittest.TestCase):

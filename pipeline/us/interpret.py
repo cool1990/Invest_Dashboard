@@ -1,16 +1,20 @@
 """美股三个维度的状态，以及整体判断。
 
 和宏观页一样按经济锚点判断，不和历史平均比。阈值都写在这里。
-情绪的四块（风险偏好、参与度、杠杆、集中度）分开写，不合成一个分数。
+盈利的三块（兑现、指引、修正）和情绪的四块都分开写，不合成一个分数。
+只有修正决定上修 / 下修这一档。FactSet 与 LSEG 不互相比较。
 """
 
 from __future__ import annotations
 
 from ..macro.interpret import _f, _head, _why
 
-# 盈利：30 日 EPS 修正 %，和半导体页同一套锚点
-EPS_UP, EPS_DOWN = 2.0, -2.0
-SPREAD_N = 3  # 强上修或强下修至少这么多家，且多于另一边，才算扩散
+# 盈利周报。超预期比例、指引、修正分开，不平均。
+ABOVE_STRONG, ABOVE_WEAK = 80.0, 70.0  # EPS Above %
+REPORTED_READY = 50.0  # 披露比例达到这个才看超预期
+GUIDE_POS = 50.0  # 没有净家数时，正面占比达到这个算偏多
+GROWTH_STEP = 0.5  # 同一来源的年度 EPS 增速，较上一篇超过这个才算上修或下修
+REV_SHARE = 0.10  # (上修次数 − 下修次数) / 合计，达到这个才改档
 
 # 估值：盈利收益率（100 / 远期市盈率）减去 10 年实际利率，单位百分点
 ERP_RICH, ERP_CHEAP = 2.0, 4.0  # 低于 2 贵，高于 4 便宜，中间大致合理
@@ -33,56 +37,157 @@ def _pct(x: float | None, digits: int = 1) -> str:
     return _f(x, "{:+." + str(digits) + "f}%")
 
 
-def _spread(n_up: int | None, n_down: int | None) -> str | None:
-    if n_up is None or n_down is None:
-        return None
-    if n_up >= SPREAD_N and n_up > n_down:
-        return "强上修在扩散"
-    if n_down >= SPREAD_N and n_down > n_up:
-        return "强下修在扩散"
-    return "强弱没有一边倒"
+def _join_phrases(phrases: list[str]) -> str:
+    if not phrases:
+        return "盈利数据不足"
+    if len(phrases) == 1:
+        return phrases[0]
+    tail = phrases[-1]
+    if any(s in tail for s in ("下修", "刚切换", "还看不到")):
+        return "，".join(phrases[:-1]) + "，但" + tail
+    return "，".join(phrases)
 
 
 def earnings_state(v: dict) -> dict:
-    """核心篮子下财年 EPS 的 30 日修正中位数。扩散只写进理由，不改中位数定的档。"""
-    rev, n = v.get("rev"), v.get("n")
-    n_up, n_down = v.get("n_up"), v.get("n_down")
+    """标普 500 盈利周报：兑现、指引、修正分开。只有修正决定上修或下修。"""
+    source = v.get("source") or "周报"
+    quarter = v.get("quarter") or "跟踪季度"
     anchors = {
-        "rev": f"高于 +{EPS_UP:g}% 为上修，低于 {EPS_DOWN:g}% 为下修",
-        "n_up": f"至少 {SPREAD_N} 家且多于另一边，才算扩散",
+        "q_growth": "跟踪季度的 EPS 同比。换季会跳，不单独决定上修或下修",
+        "y_growth": f"同一数据源内，较上一篇超过 ±{GROWTH_STEP:g} 个百分点才算上修或下修；不跨 FactSet 和 LSEG",
+        "q_guide": "预告家数。新季度会重新累计，方向看净指引",
+        "q_net": "正面家数减负面家数，大于 0 为指引偏多，小于 0 为偏空",
+        "q_pos": f"没有净家数时，正面占比达到 {GUIDE_POS:g}% 为偏多",
+        "reported": f"披露比例达到 {REPORTED_READY:g}% 才看超预期。早期笔记里的家数不是百分比",
+        "eps_above": f"达到 {ABOVE_STRONG:g}% 为兑现强，低于 {ABOVE_WEAK:g}% 为偏弱",
+        "eps_surprise": "只在同一数据源内看。FactSet 和 LSEG 的 surprise 不能连着比",
+        "rev_net": f"上修次数减下修次数。净占比达到 ±{REV_SHARE * 100:g} 个百分点才改成上修或下修",
     }
-    if rev is None:
+    useful = ("reported_pct", "reported_n", "eps_above", "q_net", "q_pos", "y_growth", "q_growth", "rev_up")
+    if not any(v.get(k) is not None for k in useful):
         return _state("数据不足", None, [], "盈利数据不足", anchors)
-    if rev > EPS_UP:
-        label, level, base = "上修", 1, "核心篮子的盈利预期在上修"
-    elif rev < EPS_DOWN:
-        label, level, base = "下修", -1, "核心篮子的盈利预期在下修"
+
+    parts: list[str] = []
+    phrases: list[str] = []
+    why: list[tuple[str, str] | None] = []
+
+    reported_pct, reported_n = v.get("reported_pct"), v.get("reported_n")
+    above, surprise = v.get("eps_above"), v.get("eps_surprise")
+    ready = reported_pct is not None and reported_pct >= REPORTED_READY
+    if reported_n is not None and reported_pct is None:
+        parts.append("披露刚开始")
+        phrases.append("财报季刚开始披露")
+        why.append(("披露", f"已披露 {reported_n:.0f} 家，笔记里这列还是家数不是比例，不据此判断兑现"))
+    elif reported_pct is not None and not ready:
+        parts.append("披露未过半")
+        phrases.append("这一季披露还没过半")
+        why.append(("披露", f"实际披露 {_f(reported_pct, '{:.1f}')}%，不到 {REPORTED_READY:g}%，超预期比例先不作数"))
+    elif ready and above is not None:
+        if above >= ABOVE_STRONG:
+            tag, phrase = "兑现强", "当季业绩兑现强"
+        elif above < ABOVE_WEAK:
+            tag, phrase = "兑现偏弱", "当季超预期的公司偏少"
+        else:
+            tag, phrase = "兑现平常", "当季超预期比例平常"
+        parts.append(tag)
+        phrases.append(phrase)
+        text = (f"{quarter} 已披露 {_f(reported_pct, '{:.1f}')}%，EPS 超预期 {_f(above, '{:.1f}')}%"
+                f"（达到 {ABOVE_STRONG:g}% 为兑现强，低于 {ABOVE_WEAK:g}% 为偏弱）")
+        if surprise is not None:
+            text += f"；surprise {_f(surprise, '{:+.1f}')}%（{source} 口径，不和另一种来源比）"
+        why.append(("兑现", text))
+
+    q_net, q_pos, y_pos = v.get("q_net"), v.get("q_pos"), v.get("y_pos")
+    if q_net is not None:
+        if q_net > 0:
+            gtag, gphrase = "指引偏多", "下季指引偏多"
+        elif q_net < 0:
+            gtag, gphrase = "指引偏空", "下季指引偏空"
+        else:
+            gtag, gphrase = "指引持平", "下季指引正负相抵"
+        parts.append(gtag)
+        phrases.append(gphrase)
+        text = f"季度净指引 {_f(q_net, '{:+.0f}')} 家（大于 0 为偏多，小于 0 为偏空）"
+        if q_pos is not None:
+            text += f"，正面占比 {_f(q_pos, '{:.1f}')}%"
+        if y_pos is not None:
+            text += f"；年度正面占比 {_f(y_pos, '{:.1f}')}%"
+        why.append(("指引", text))
+    elif q_pos is not None:
+        if q_pos >= GUIDE_POS:
+            gtag, gphrase = "指引偏多", "下季指引偏多"
+        else:
+            gtag, gphrase = "指引偏空", "下季指引偏空"
+        parts.append(gtag)
+        phrases.append(gphrase)
+        why.append(("指引", f"季度正面指引 {_f(q_pos, '{:.1f}')}%（达到 {GUIDE_POS:g}% 为偏多）。这周没有净家数"))
+
+    rev_up, rev_down = v.get("rev_up"), v.get("rev_down")
+    y, y_prev = v.get("y_growth"), v.get("y_prev")
+    level = 0
+    if rev_up is not None and rev_down is not None and rev_up + rev_down > 0:
+        share = (rev_up - rev_down) / (rev_up + rev_down)
+        if share >= REV_SHARE:
+            rtag, rphrase, level = "上修", "分析师在上修盈利", 1
+        elif share <= -REV_SHARE:
+            rtag, rphrase, level = "下修", "分析师在下修盈利", -1
+        elif rev_down > rev_up:
+            rtag, rphrase = "小幅净下修", "分析师修正已是小幅净下修"
+        elif rev_up > rev_down:
+            rtag, rphrase = "小幅净上修", "分析师修正是小幅净上修"
+        else:
+            rtag, rphrase = "修正持平", "盈利修正接近持平"
+        parts.append(rtag)
+        phrases.append(rphrase)
+        text = (f"主线里的 FY1 修正 {rev_up:.0f} 次上修、{rev_down:.0f} 次下修，"
+                f"净占比 {_f(share * 100, '{:+.1f}')} 个百分点"
+                f"（达到 ±{REV_SHARE * 100:g} 才改成上修或下修）")
+        if y is not None and y_prev is not None:
+            text += f"。年度增速 {_f(y, '{:.1f}')}%，较上一篇 {_f(y - y_prev, '{:+.1f}')} 个百分点，和修正次数不是同一件事"
+        why.append(("修正", text))
+    elif v.get("source_break"):
+        parts.append("修正不可比")
+        phrases.append("数据源刚切换，修正还不能和上一份比")
+        why.append(("修正", "这一期换成了另一种盈利统计，年度增速和 surprise 都不和上一份比"))
+    elif y is not None and y_prev is not None:
+        delta = y - y_prev
+        if delta > GROWTH_STEP:
+            rtag, rphrase, level = "上修", "分析师在上修全年盈利", 1
+        elif delta < -GROWTH_STEP:
+            rtag, rphrase, level = "下修", "分析师在下修全年盈利", -1
+        else:
+            rtag, rphrase = "修正持平", "全年盈利修正接近持平"
+        parts.append(rtag)
+        phrases.append(rphrase)
+        why.append(("修正", f"同一来源（{source}）的年度 EPS 增速 {_f(y, '{:.1f}')}%，较上一篇 {_f(delta, '{:+.1f}')} 个百分点"
+                    f"（超过 ±{GROWTH_STEP:g} 才算上修或下修）。不跨 FactSet 和 LSEG"))
     else:
-        label, level, base = "平稳", 0, "核心篮子的盈利修正接近持平"
-    spread = _spread(n_up, n_down)
-    if spread == "强上修在扩散" and label != "上修":
-        summary = base + "，不过强上修的家数更多"
-    elif spread == "强下修在扩散" and label != "下修":
-        summary = base + "，不过强下修的家数更多"
-    elif spread and spread != "强弱没有一边倒":
-        summary = base + "，而且" + spread
-    else:
-        summary = base
-    why = _why(
-        ("修正", f"核心篮子有数的 {n} 家，30 日 EPS 修正中位数 {_pct(rev, 2)}"
-         f"（高于 +{EPS_UP:g}% 为上修，低于 {EPS_DOWN:g}% 为下修）") if n else
-        ("修正", f"30 日 EPS 修正中位数 {_pct(rev, 2)}（高于 +{EPS_UP:g}% 为上修，低于 {EPS_DOWN:g}% 为下修）"),
-        ("扩散", f"强上修 {n_up} 家、强下修 {n_down} 家，{spread}"
-         f"（至少 {SPREAD_N} 家且多于另一边才算扩散）") if spread else None,
-    )
-    return _state(label, level, why, summary, anchors)
+        parts.append("修正不足")
+        phrases.append("还看不到能定档的盈利修正")
+        why.append(("修正", "没有上修/下修次数，也没有同一来源的上一篇年度增速"))
+
+    if v.get("q_growth") is not None:
+        why.append(("当季增速", f"{quarter} EPS 同比 {_f(v.get('q_growth'), '{:.1f}')}%。换季时会跳，不单独决定上修或下修"))
+    if v.get("fwd_eps_chg") is not None:
+        why.append(("远期EPS", f"周报里的 Forward EPS 变化 {_f(v.get('fwd_eps_chg'), '{:+.1f}')}%，只作参考"))
+
+    return _state(" · ".join(parts), level, _why(*why), _join_phrases(phrases), anchors)
 
 
 def valuation_state(v: dict) -> dict:
-    """远期市盈率换成盈利收益率，再减去 10 年实际利率。手工标普远期市盈率优先于篮子中位数。"""
+    """远期市盈率换成盈利收益率，再减去 10 年实际利率。优先用周报里的标普远期市盈率。"""
     pe, erp, real = v.get("pe"), v.get("erp"), v.get("real")
-    manual = bool(v.get("manual"))
-    who = "手工录入的标普远期市盈率" if manual else "核心篮子远期市盈率中位数"
+    source = v.get("source") or ("manual" if v.get("manual") else "basket")
+    who = {
+        "manual": "手工录入的标普远期市盈率",
+        "insight": "标普 500 远期市盈率",
+        "basket": "核心篮子远期市盈率中位数",
+    }.get(source, "远期市盈率")
+    tail = {
+        "manual": "（核心篮子和周报只作参考）",
+        "insight": "（盈利周报里的未来四季市盈率，不是个股中位数）",
+        "basket": "（还没有标普指数的远期市盈率，暂用个股中位数）",
+    }.get(source, "")
     anchors = {
         "pe": "不和历史平均市盈率比；判断看盈利收益率减去实际利率",
         "erp": f"低于 {ERP_RICH:g}% 为贵，{ERP_RICH:g}–{ERP_CHEAP:g}% 大致合理，高于 {ERP_CHEAP:g}% 为便宜",
@@ -91,7 +196,7 @@ def valuation_state(v: dict) -> dict:
     if pe is None:
         return _state("数据不足", None, [], "估值数据不足", anchors)
     ey = 100.0 / pe
-    pe_t = f"{who} {_f(pe, '{:.1f}')} 倍，盈利收益率 {_f(ey, '{:.2f}')}%"
+    pe_t = f"{who} {_f(pe, '{:.1f}')} 倍，盈利收益率 {_f(ey, '{:.2f}')}%{tail}"
     if erp is None or real is None:
         why = _why(("市盈率", pe_t), ("实际利率", "还没有 10 年期实际利率，算不出风险溢价"))
         return _state("数据不足", None, why, "还没法把远期市盈率换成相对实际利率的风险溢价", anchors)
@@ -102,7 +207,7 @@ def valuation_state(v: dict) -> dict:
     else:
         label, level, summary = "大致合理", 0, "远期盈利收益率相对实际利率大致合理"
     why = _why(
-        ("市盈率", pe_t + ("（核心篮子中位数只作参考）" if manual else "（不是标普指数官方的远期市盈率）")),
+        ("市盈率", pe_t),
         ("风险溢价", f"10 年实际利率 {_f(real, '{:.2f}')}%，盈利收益率减去它是 {_f(erp, '{:.2f}')}%"
          f"（低于 {ERP_RICH:g}% 为贵，高于 {ERP_CHEAP:g}% 为便宜）"),
     )

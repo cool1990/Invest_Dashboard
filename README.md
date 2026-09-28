@@ -123,30 +123,33 @@
 
 ## 美股板块
 
-从盈利、估值、情绪三块看美股，不把方向相反的数平均掉。环境名只由盈利和估值决定（顺风 / 盈利支撑 / 涨但偏贵 / 估值便宜 / 中性 / 估值偏贵 / 下修但便宜 / 盈利转弱 / 双杀风险），情绪写在下面。阈值在 `pipeline/us/interpret.py`。
+从标普 500 的盈利、估值、情绪三块看美股，不把方向相反的数平均掉。环境名只由**盈利修正**和估值决定（顺风 / 盈利支撑 / 涨但偏贵 / 估值便宜 / 中性 / 估值偏贵 / 下修但便宜 / 盈利转弱 / 双杀风险）。兑现、指引和情绪写在下面，不参与起名。阈值在 `pipeline/us/interpret.py`。
 
-**盈利、估值用的核心篮子**是盈利跟踪笔记里的 8 家：苹果、微软、英伟达、亚马逊、谷歌、Meta、博通、甲骨文。观察名单上的中概和加密相关公司只列在表里，不进中位数。样本不足、EPS 为负的不投票；某一天有数的不足 4 家，那天不出中位数。
+盈利用的是每周一篇的标普 500 盈利周报（Obsidian 笔记的 frontmatter），不是观察名单的中位数。2026-08-07 及之前是 FactSet《Earnings Insight》，2026-08-15 起是 LSEG I/B/E/S《This Week in Earnings》。两套口径不同，例如 EPS Surprise 会从大约 +29% 掉到 +8.5%。页面上两段分开画，并写明切换日期。
 
 | 维度 | 怎么判断 |
 |---|---|
-| 盈利 | 核心篮子下财年 EPS 的 30 日修正中位数：高于 +2% 为上修，低于 −2% 为下修。强上修或强下修至少 3 家且多于另一边，理由里写成扩散，但不改中位数定的档 |
-| 估值 | 主数字是这 8 家的远期市盈率中位数。判断看盈利收益率（100 / 远期市盈率）减去 10 年实际利率：低于 2 个百分点为贵，2–4 大致合理，高于 4 为便宜。不和历史平均市盈率比 |
+| 盈利 | 三句并列。兑现：披露比例达到 50% 之后，EPS 超预期达到 80% 为强、低于 70% 为偏弱。指引：季度净指引（正面家数减负面家数）大于 0 为偏多。修正：主线里若写了上修/下修次数，净占比达到 ±10 个百分点才改成上修或下修，中间只记小幅；没有次数时，同一数据源的年度 EPS 增速较上一篇超过 ±0.5 个百分点才算。不跨 FactSet 和 LSEG |
+| 估值 | 主数字是周报里的标普 500 远期市盈率。判断看盈利收益率（100 / 远期市盈率）减去 10 年实际利率：低于 2 个百分点为贵，2–4 大致合理，高于 4 为便宜。不和历史平均市盈率比 |
 | 情绪 | 四句并列：VIX（低于 15 平静，高于 25 紧张；CNN 恐贪、AAII 牛熊差若和 VIX 相反，写在同一句里）、标普站上 200 日均线的比例（低于 40% 为面窄）、FINRA 融资余额同比（高于 +20% 为扩张，低于 0 为去杠杆；比标普同比高过 10 个百分点算快于指数）、标普 500 前十大权重（达到 30% 为集中） |
 
-`data/us/manual.csv` 里如果写了 `spx_fwd_pe`（列与半导体手工表相同），估值改用这个标普远期市盈率，篮子中位数降为参考。
+个股盈利跟踪（远期市盈率、目标市盈率是否触发、30 日修正、RSI）列在盈利图下面，不进指数判断。8 家大盘股（苹果、微软、英伟达、亚马逊、谷歌、Meta、博通、甲骨文）只是表上的对照。
+
+`data/us/manual.csv` 里如果写了 `spx_fwd_pe`（列与半导体手工表相同），估值改用这个数，周报和个股中位数降为参考。新的一周把笔记放进 `data/raw/us/insight/`，更新时会合并进 `data/raw/us/earnings_insight.csv`；也可以直接改这张表。更新脚本不会自动去拉 Obsidian。
 
 **数据**：
 
 | 来源 | 内容 | 本地文件 |
 |---|---|---|
-| 旧站盈利跟踪 | 观察名单的收盘价、RSI、远期市盈率、30 日 EPS 修正 | `data/raw/us/earnings.csv` |
+| 盈利周报 | 标普 500 的季度/年度 EPS 增速、指引、披露、超预期、surprise、远期市盈率、每周主线 | `data/raw/us/earnings_insight.csv` |
+| 旧站盈利跟踪 | 观察名单的收盘价、RSI、远期市盈率、目标市盈率、30 日 EPS 修正。不进指数判断 | `data/raw/us/earnings.csv` |
 | 旧站情绪笔记 | VIX、CNN 恐贪、AAII、标普和纳指参与度、RSI | `data/raw/us/sentiment.csv` |
 | 旧站日历 | 未来 14 天里观察名单上的美股财报 | `data/raw/us/calendar.json` |
 | FRED | 标普 500、VIX、税后企业利润、非金融企业股权市值；10 年实际利率和 GDP 直接读宏观已下载的文件 | `data/raw/fred/` |
 | FINRA | 保证金账户借方余额（客户融资），月频，从 1997 年起 | `data/raw/us/margin.csv` |
 | ETF 持仓 | 标普 500 前十大权重合计。先试 iShares IVV 的 CSV，那个地址目前常返回产品页，就改用 SPDR SPY 日持仓 | `data/raw/us/concentration.csv` |
 
-笔记类序列从 2026 年 9 月才有。前十大权重从第一次成功下载开始累积。企业利润同比和市值 / GDP 只作参考图，不改标签。
+盈利周报从 2026-01-09 到 2026-09-25，共 36 周。LSEG 期间年度指引、指数涨幅、Forward EPS 变化多半是空的；2026-08-15、08-21、08-28 三篇没有主线。个股跟踪和参与度从 2026 年 9 月才有。前十大权重从第一次成功下载开始累积。企业利润同比和市值 / GDP 只作参考图，不改标签。行业贡献、bottom-up EPS、trailing P/E 只在部分周报正文里，没有进统一字段。
 
 ## 加密货币板块
 
@@ -211,7 +214,7 @@ pipeline/semis/kosis.py       韩国统计局出货与库存（需要 key）
 pipeline/semis/interpret.py   半导体规则：供需五个维度、整体位置、分环节、观察清单
 pipeline/semis/importance.py  半导体日历星级
 pipeline/semis/build.py       半导体看板数据
-pipeline/us/                  美股：盈利笔记、融资余额、前十大权重、三条规则
+pipeline/us/                  美股：标普盈利周报、个股跟踪、融资余额、前十大权重，规则在 interpret.py
 pipeline/crypto/              加密货币：Coin Metrics、BGeometrics、币安、Farside、稳定币、恐贪，规则在 interpret.py
 scripts/update_macro.py       更新宏观数据（下载 + 生成）
 scripts/update_semis.py       更新半导体数据（下载 + 生成）
@@ -230,7 +233,7 @@ assets/                       样式、脚本、Chart.js（本地打包，不依
 
 - `.github/workflows/update-macro.yml`：每天 22:40 UTC（北京时间 06:40）跑测试、下载、生成；数据有变化就提交并发布网页。也可以在 Actions 页面手动运行。
 - `.github/workflows/update-semis.yml`：每天 02:10 UTC（北京时间 10:10，旧站早晨笔记之后）；每月 5–12 日 08:10 UTC 再跑一次接台湾月营收。可选 Secret `KOSIS_API_KEY`。更新工作流推送前都先 `git pull --rebase`，写的文件不重叠。
-- `.github/workflows/update-us.yml`：每天 02:40 UTC（北京时间 10:40）。美股只写 `data/raw/us/`、`data/us/`，以及 `SP500`、`VIXCLS`、`CPATAX`、`NCBEILQ027S` 这四条宏观还没用的 FRED 序列。
+- `.github/workflows/update-us.yml`：每天 02:40 UTC（北京时间 10:40）。美股只写 `data/raw/us/`、`data/us/`，以及 `SP500`、`VIXCLS`、`CPATAX`、`NCBEILQ027S` 这四条宏观还没用的 FRED 序列。标普盈利周报不在下载范围内。
 - `.github/workflows/update-crypto.yml`：每天 13:40 UTC（北京时间 21:40），等当天的 ETF 净流入出现在 Farside。不需要 Secret。
 - `.github/workflows/pages.yml`：改网页或合并到 `main` 时发布。
 
