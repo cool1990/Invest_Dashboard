@@ -1,4 +1,4 @@
-# Invest_Dashboard
+# Invest_Dashboard_V2
 
 更全、更详细的投资看板。静态网页，简体中文，按板块分页：
 
@@ -10,7 +10,7 @@
 | 加密货币 | `crypto.html` | 第一期 |
 | 个股 | — | 规划中 |
 
-网址：https://cool1990.github.io/Invest_Dashboard/
+网址：https://cool1990.github.io/Invest_Dashboard_V2/
 
 旧站 [cool1990/invest-dashboard_v1](https://github.com/cool1990/invest-dashboard_v1) 照常运行，两边互不影响。本仓库只读旧站公开的文件：宏观读市场隐含 EFFR，半导体读笔记整理出的存储、GPU、OpenRouter、韩国出口、EPS 修正和日历（见下）。
 
