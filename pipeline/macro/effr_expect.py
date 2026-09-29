@@ -1,6 +1,6 @@
 """市场隐含 EFFR（下月 / 年底 / 明年底）。
 
-这三项来自每天早晨的笔记，已经由 cool1990/macro-dashboard 整理进
+这三项来自每天早晨的笔记，已经由 cool1990/invest-dashboard_v1 整理进
 data/sentiment/series.csv。这里读那份公开文件，只挑出三行 EFFR，
 按 (date, series_id) 合并进本仓库的 data/macro/effr_expectations.csv。
 读取失败时保留本地已有记录。
@@ -13,7 +13,7 @@ import io
 import urllib.request
 from pathlib import Path
 
-SOURCE_URL = "https://raw.githubusercontent.com/cool1990/macro-dashboard/main/data/sentiment/series.csv"
+SOURCE_URL = "https://raw.githubusercontent.com/cool1990/invest-dashboard_v1/main/data/sentiment/series.csv"
 KEYS = ("effr_next", "effr_year", "effr_ny")
 FIELDS = ["date", "series_id", "value", "obs_date", "remark"]
 

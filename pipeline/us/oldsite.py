@@ -18,7 +18,7 @@ from pathlib import Path
 from ..csvio import merge, read_csv, write_csv
 from .indicators import SENTIMENT
 
-BASE = "https://raw.githubusercontent.com/cool1990/macro-dashboard/main/"
+BASE = "https://raw.githubusercontent.com/cool1990/invest-dashboard_v1/main/"
 EARNINGS_URL = "data/earnings/daily.csv"
 SENTIMENT_URL = "data/sentiment/series.csv"
 CALENDAR_URL = "data/calendar/events.json"

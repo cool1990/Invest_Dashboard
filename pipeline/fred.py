@@ -3,7 +3,7 @@
 每条序列全历史下载，原样存到 data/raw/fred/<ID>.csv（列：date,value）。
 下载失败时保留旧文件，并在状态里记下失败原因。
 
-不要给请求加自定义 User-Agent：macro-dashboard 仓库 2026-09-27 实测，
+不要给请求加自定义 User-Agent：cool1990/invest-dashboard_v1 仓库（原 macro-dashboard） 2026-09-27 实测，
 自定义 UA 会让 FRED 在 HTTP/2 上立刻报错、在 HTTP/1.1 上挂起。
 """
 

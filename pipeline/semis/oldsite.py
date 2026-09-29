@@ -1,4 +1,4 @@
-"""读旧站 cool1990/macro-dashboard 的公开文件：存储价格、GPU 租金、OpenRouter、SiliconData、
+"""读旧站 cool1990/invest-dashboard_v1 的公开文件：存储价格、GPU 租金、OpenRouter、SiliconData、
 韩国芯片出口、盈利笔记里的 EPS 修正、日历。
 
 这些数都来自每天早晨的笔记，旧站已整理成 CSV。这里按主键合并进 data/raw/semis/oldsite/，
@@ -16,7 +16,7 @@ from pathlib import Path
 from ..csvio import merge, read_csv, write_csv
 from .indicators import EPS_KEEP
 
-BASE = "https://raw.githubusercontent.com/cool1990/macro-dashboard/main/"
+BASE = "https://raw.githubusercontent.com/cool1990/invest-dashboard_v1/main/"
 
 # 名称 → (旧站路径, 主键列, 保留的列)
 TABLES = {
