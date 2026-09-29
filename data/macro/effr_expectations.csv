@@ -5,3 +5,6 @@ date,series_id,value,obs_date,remark
 2026-09-27,effr_next,4.046,2026-09-25,"Investing Fed Rate Monitor；当前EFFR 3.88%(2026-09-24)；按目标上限-EFFR利差12bp折算；最大概率区间4.00 - 4.25(66.6%)；**隐含加息0.7次**；概率更新时间 Sep 26, 2026 12:35AM EDT"
 2026-09-27,effr_ny,4.762,2026-09-25,"Investing Fed Rate Monitor；当前EFFR 3.88%(2026-09-24)；按目标上限-EFFR利差12bp折算；最大概率区间4.75 - 5.00(28.9%)；**隐含加息3.5次**；概率更新时间 Sep 26, 2026 12:35AM EDT"
 2026-09-27,effr_year,4.24,2026-09-25,"Investing Fed Rate Monitor；当前EFFR 3.88%(2026-09-24)；按目标上限-EFFR利差12bp折算；最大概率区间4.25 - 4.50(51.6%)；**隐含加息1.4次**；概率更新时间 Sep 26, 2026 12:35AM EDT"
+2026-09-28,effr_next,4.061,2026-09-28,"Investing Fed Rate Monitor；当前EFFR 3.88%(2026-09-25)；按目标上限-EFFR利差12bp折算；最大概率区间4.00 - 4.25(72.3%)；**隐含加息0.7次**；概率更新时间 Sep 28, 2026 07:35PM EDT"
+2026-09-28,effr_ny,4.83,2026-09-28,"Investing Fed Rate Monitor；当前EFFR 3.88%(2026-09-25)；按目标上限-EFFR利差12bp折算；最大概率区间4.75 - 5.00(30.4%)；**隐含加息3.8次**；概率更新时间 Sep 28, 2026 07:35PM EDT"
+2026-09-28,effr_year,4.263,2026-09-28,"Investing Fed Rate Monitor；当前EFFR 3.88%(2026-09-25)；按目标上限-EFFR利差12bp折算；最大概率区间4.25 - 4.50(58.4%)；**隐含加息1.5次**；概率更新时间 Sep 28, 2026 07:35PM EDT"
