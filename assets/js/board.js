@@ -90,24 +90,12 @@ function chgHTML(c) {
   return `<span>${arrow} ${esc(c.text)}</span><div class="small muted">${esc(c.label)} ${esc(c.base)}</div>`;
 }
 
-const MOVES = [
+const SIGNALS = [
   { key: "all", label: "全部" },
-  { key: "good2", label: "明显转好" },
-  { key: "good1", label: "略转好" },
-  { key: "hawk2", label: "明显转鹰" },
-  { key: "hawk1", label: "略转鹰" },
-  { key: "flat", label: "持平" },
-  { key: "dove1", label: "略转鸽" },
-  { key: "dove2", label: "明显转鸽" },
-  { key: "bad1", label: "略转差" },
-  { key: "bad2", label: "明显转差" },
-  { key: "tight2", label: "大幅收窄" },
-  { key: "tight1", label: "明显收窄" },
-  { key: "calm", label: "平稳" },
-  { key: "wide1", label: "明显走阔" },
-  { key: "wide2", label: "大幅走阔" },
+  { key: "watch", label: "留意" },
+  { key: "alert", label: "重要" },
 ];
-let moveKey = "all";
+let signalKey = "all";
 
 function moveHTML(mv) {
   if (!mv) return `<span class="muted">—</span>`;
@@ -119,46 +107,73 @@ function statusHTML(st) {
   return `<b class="lv lv-${esc(st.key)}">${esc(st.label)}</b>`;
 }
 
+function signalTag(sig) {
+  if (!sig || sig.key === "none") return "";
+  return ` <span class="tag tag-sig tag-sig-${esc(sig.key)}">${esc(sig.label)}</span>`;
+}
+
 function metricsHTML(d) {
   const hasMv = (d.metrics || []).some((m) => m.move);
   const hasSt = (d.metrics || []).some((m) => m.status);
   const cols = `has-mv${hasSt ? " has-st" : ""}`;
-  const rows = (d.metrics || []).map((m) => `
-    <div class="ev ${cols}" ${m.move ? `data-mv="${esc(m.move.key)}"` : ""}>
-      <span class="ev-name">${m.chart ? `<a href="#c-${esc(m.chart)}">${esc(m.name)}</a>` : esc(m.name)}${m.model ? ' <span class="tag">预测</span>' : ""}${m.ref ? ' <span class="tag tag-ref">参考</span>' : ""}${m.note ? `<div class="small muted">${esc(m.note)}</div>` : ""}</span>
+  const rows = (d.metrics || []).map((m) => {
+    const sig = m.signal || { key: "none" };
+    return `
+    <div class="ev ${cols}" data-sig="${esc(sig.key)}">
+      <span class="ev-name">${m.chart ? `<a href="#c-${esc(m.chart)}">${esc(m.name)}</a>` : esc(m.name)}${signalTag(sig)}${m.model ? ' <span class="tag">预测</span>' : ""}${m.ref ? ' <span class="tag tag-ref">参考</span>' : ""}${m.note ? `<div class="small muted">${esc(m.note)}</div>` : ""}</span>
       <span class="ev-val"><i class="m-label">最新</i><b>${esc(m.text)}</b><small>${esc(m.unit)}</small><div class="small muted">${esc(m.date)}</div></span>
       <span class="ev-chg"><i class="m-label">较上期</i>${chgHTML(m.chg)}</span>
       ${hasMv ? `<span class="ev-mv"><i class="m-label">变动</i>${moveHTML(m.move)}</span>` : ""}
       ${hasSt ? `<span class="ev-st"><i class="m-label">状态</i>${statusHTML(m.status)}</span>` : ""}
       <span class="ev-anchor"><i class="m-label">对照</i>${esc(m.anchor || "—")}</span>
       ${m.about ? `<p class="ev-about">${esc(m.about)}</p>` : ""}
-    </div>`).join("");
+    </div>`;
+  }).join("");
   if (!rows) return "";
   return `<div class="card evid"><div class="ev ev-head ${cols}"><span>指标</span><span>最新</span><span>较上期</span>${hasMv ? "<span>变动</span>" : ""}${hasSt ? "<span>状态</span>" : ""}<span>对照</span></div>${rows}</div>`;
 }
 
-function applyMoveFilter() {
-  document.querySelectorAll(".ev[data-mv]").forEach((el) => {
-    el.hidden = moveKey !== "all" && el.dataset.mv !== moveKey;
+function applySignalFilter() {
+  document.querySelectorAll(".ev[data-sig]").forEach((el) => {
+    const g = el.dataset.sig;
+    if (signalKey === "all") el.hidden = false;
+    else if (signalKey === "watch") el.hidden = g !== "watch" && g !== "alert";
+    else el.hidden = g !== signalKey;
+  });
+  // 某一维筛空时，整块也可以一眼看出来
+  document.querySelectorAll("section.dim").forEach((sec) => {
+    const rows = [...sec.querySelectorAll(".ev[data-sig]")];
+    if (!rows.length) return;
+    const empty = rows.every((r) => r.hidden);
+    sec.classList.toggle("sig-empty", empty);
   });
 }
 
 function renderStatusFilter() {
   const el = document.getElementById("st-filter");
   if (!el) return;
-  const any = (DATA.dimensions || []).some((d) => (d.metrics || []).some((m) => m.move));
+  const any = (DATA.dimensions || []).some((d) => (d.metrics || []).some((m) => m.signal));
   if (!any) { el.hidden = true; return; }
   el.hidden = false;
-  el.innerHTML = MOVES.map((s) =>
-    `<button type="button" data-mv="${s.key}" aria-pressed="${s.key === moveKey}">${s.label}</button>`).join("");
+  const counts = { all: 0, watch: 0, alert: 0 };
+  for (const d of DATA.dimensions || []) {
+    for (const m of d.metrics || []) {
+      const k = (m.signal || {}).key || "none";
+      counts.all++;
+      if (k === "watch" || k === "alert") counts.watch++;
+      if (k === "alert") counts.alert++;
+    }
+  }
+  el.innerHTML = SIGNALS.map((s) =>
+    `<button type="button" data-sig="${s.key}" aria-pressed="${s.key === signalKey}">${s.label}<small>${counts[s.key]}</small></button>`).join("");
   el.onclick = (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    moveKey = b.dataset.mv;
-    el.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.mv === moveKey)));
-    applyMoveFilter();
+    signalKey = b.dataset.sig;
+    el.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.sig === signalKey)));
+    applySignalFilter();
   };
-  applyMoveFilter();
+  applySignalFilter();
 }
 
 // ---- 第三层：时间 ----
