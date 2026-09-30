@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-09-29T09:23:07+08:00",
+ "generated_at": "2026-09-30T08:56:41+08:00",
  "events": [
   {
    "date": "2026-09-30",
@@ -9,7 +9,7 @@
    "url": "https://www.nasdaq.com/market-activity/earnings",
    "note": "美东盘后。原名：Micron Technology, Inc.。日期不一样：Nasdaq earnings calendar写的是 2026-09-30，盈利跟踪笔记写的是 2026-10-01",
    "previous": "$2.86",
-   "consensus": "$31.24",
+   "consensus": "$31.35",
    "priority": "高"
   },
   {
@@ -85,8 +85,8 @@
    "title": "台积电 3Q26 业绩会",
    "url": "https://investor.tsmc.com/english/financial-calendar",
    "note": "TSMC IR 财务日历：3Q'26 Earnings Conference and Conference Call，台北时间14:00-15:30",
-   "previous": "",
-   "consensus": "",
+   "previous": "$2.92",
+   "consensus": "$4.45",
    "priority": "高"
   },
   {
