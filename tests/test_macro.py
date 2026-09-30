@@ -385,8 +385,7 @@ class InterpretTest(unittest.TestCase):
         self.assertEqual([w["k"] for w in f["why"]], ["财政脉冲", "偿债压力"])
         self.assertIn("对增长是拖累", f["why"][0]["t"])
         self.assertIn("超过 1990 年代峰值", f["summary"])
-        self.assertIn("加息约 1.4 次", p["anchors"]["year_end"])
-        self.assertIn("点阵图 4.10%：高 66bp", p["anchors"]["next_year"])
+        self.assertNotIn("year_end", p["anchors"])
 
     def test_environment(self):
         g = I.growth_state({"gdpnow": 5.0, "gdp_q": 1.5, "nfp3": 71, "nfp3_ago": 38})
@@ -475,8 +474,76 @@ class DashboardTest(unittest.TestCase):
                for k, v in (("effr_next", "4.046"), ("effr_year", "4.24"), ("effr_ny", "4.762"))]
         c = build_dashboard(raw, exp, date(2026, 9, 28))["charts"]["effr_path"]
         market, dots = c["series"]
+        self.assertEqual(c["categories"], ["当前", "下次会议", "年底", "明年底", "长期"])
         self.assertEqual(market["data"], [3.88, 4.046, 4.24, 4.762, None])
         self.assertEqual(dots["data"], [3.88, None, 3.9, 3.6, 3.0])
+
+    def test_meeting_uses_next_month_history_and_anchor(self):
+        # 下次会议从 9-29 才有单独记录，前一天的对比用下月
+        raw = {"EFFR": [(date(2026, 9, 28), 3.88)]}
+        remark_next = "最大概率区间3.75 - 4.00(52.9%)；**隐含加息0.5次**"
+        remark_year = "最大概率区间4.00 - 4.25(51.9%)；**隐含加息1.3次**"
+        exp = [
+            {"date": "2026-09-28", "series_id": "effr_next", "value": "4.061", "remark": ""},
+            {"date": "2026-09-29", "series_id": "effr_meet", "value": "3.998", "remark": remark_next},
+            {"date": "2026-09-28", "series_id": "effr_year", "value": "4.263", "remark": ""},
+            {"date": "2026-09-29", "series_id": "effr_year", "value": "4.204", "remark": remark_year},
+            {"date": "2026-09-29", "series_id": "effr_ny", "value": "4.783", "remark":
+             "最大概率区间4.75 - 5.00(28.9%)；**隐含加息3.6次**"},
+        ]
+        m = {x["id"]: x for x in build_dashboard(raw, exp, date(2026, 9, 29))["dimensions"][4]["metrics"]}
+        self.assertEqual(m["meeting"]["text"], "3.998")
+        self.assertEqual(m["meeting"]["note"], "更早的对比用下月")
+        self.assertEqual(m["meeting"]["chg"]["base"], "4.061")
+        self.assertIn("隐含加息0.5次，最大概率区间 3.75 - 4.00（52.9%）", m["meeting"]["anchor"])
+        self.assertIn("关注：当日下跌 6.3bp，达到 5bp", m["meeting"]["anchor"])
+        self.assertIn("隐含加息1.3次，最大概率区间 4.00 - 4.25（51.9%）", m["year_end"]["anchor"])
+        self.assertIn("当日下跌 5.9bp，达到 5bp", m["year_end"]["anchor"])
+        self.assertNotIn("方向相反", m["meeting"]["anchor"])
+        self.assertIn("隐含加息3.6次", m["next_year"]["anchor"])
+        self.assertNotIn("关注", m["next_year"]["anchor"])
+
+
+class EffrSignalTest(unittest.TestCase):
+    def test_daily_and_five_day_levels(self):
+        flat = [(date(2026, 9, d), 4.20) for d in range(24, 30)]
+        self.assertEqual(I.tenor_signals(flat), ("", []))
+        watch = flat[:-1] + [(date(2026, 9, 29), 4.26)]  # 当日 +6bp，5 日不够
+        level, reasons = I.tenor_signals(watch)
+        self.assertEqual(level, "关注")
+        self.assertIn("当日上涨 6bp，达到 5bp", reasons)
+        hot = [(date(2026, 9, 28), 4.20), (date(2026, 9, 29), 4.31)]
+        level, reasons = I.tenor_signals(hot)
+        self.assertEqual(level, "重要")
+        self.assertIn("大于 10bp", reasons[0])
+        # 正好 10bp 还不到「大于 10bp」
+        edge = [(date(2026, 9, 28), 4.20), (date(2026, 9, 29), 4.30)]
+        self.assertEqual(I.tenor_signals(edge)[0], "关注")
+        five = [(date(2026, 9, 20), 4.00), (date(2026, 9, 24), 4.00), (date(2026, 9, 25), 4.08)]
+        level, reasons = I.tenor_signals(five)
+        self.assertEqual(level, "关注")
+        self.assertTrue(any("5 日累计" in r and "超过 5bp" in r for r in reasons))
+        five_big = [(date(2026, 9, 20), 4.00), (date(2026, 9, 25), 4.12)]
+        level, reasons = I.tenor_signals(five_big)
+        self.assertEqual(level, "关注")
+        self.assertTrue(any("超过 0.1%" in r for r in reasons))
+
+    def test_anchor_without_probability(self):
+        remark = "隐含加息1.3次，最大概率区间4.00 - 4.25，5日累计变化历史快照不足"
+        self.assertEqual(I.implied_anchor(remark), "隐含加息1.3次，最大概率区间 4.00 - 4.25")
+
+    def test_meeting_versus_year(self):
+        meet = [(date(2026, 9, 28), 4.00), (date(2026, 9, 29), 4.08)]
+        year_up = [(date(2026, 9, 28), 4.20), (date(2026, 9, 29), 4.28)]
+        self.assertEqual(I.cross_signal(meet, year_up), ("", []))
+        year_down = [(date(2026, 9, 28), 4.20), (date(2026, 9, 29), 4.12)]
+        level, reasons = I.cross_signal(meet, year_down)
+        self.assertEqual(level, "关注")
+        self.assertIn("方向相反", reasons[0])
+        year_flat = [(date(2026, 9, 28), 4.20), (date(2026, 9, 29), 4.205)]
+        level, reasons = I.cross_signal(meet, year_flat)
+        self.assertEqual(level, "关注")
+        self.assertIn("年底几乎不动", reasons[0])
 
 
 class EffrExpectTest(unittest.TestCase):

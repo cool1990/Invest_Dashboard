@@ -7,7 +7,9 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 
 
 @dataclass
@@ -375,8 +377,14 @@ def policy_state(v: dict) -> dict:
             "高于约 0.5–1% 的中性估计，在压需求" if stance == "偏紧" else "比中性估计高 1 个百分点以上")
     path_t = None
     if path:
-        path_t = f"当前 EFFR {cur:.2f}%，市场隐含" + (f"年底 {ye:.2f}%、" if ye is not None else "") + \
-            f"明年底 {ny:.2f}%，相当于到明年底{path}"
+        meet = v.get("next_meet")
+        bits = []
+        if meet is not None:
+            bits.append(f"下次会议 {meet:.2f}%")
+        if ye is not None:
+            bits.append(f"年底 {ye:.2f}%")
+        bits.append(f"明年底 {ny:.2f}%")
+        path_t = f"当前 EFFR {cur:.2f}%，市场隐含{'、'.join(bits)}，相当于到明年底{path}"
         if gap is not None and abs(gap) >= 0.25:
             path_t += f"；比点阵图 {dot_ny:.2f}% {'鹰' if gap > 0 else '鸽'} {abs(gap) * 100:.0f}bp"
     why = _why(("当前立场", stance_t) if stance else None, ("市场路径", path_t) if path else None)
@@ -385,15 +393,112 @@ def policy_state(v: dict) -> dict:
         path and (f"市场定价到明年底{path}"
                   + (f"，比美联储点阵图更{'鹰' if gap > 0 else '鸽'}" if gap is not None and abs(gap) >= 0.25 else ""))) if x)
     anchors = {"real_policy": "中性约 0.5–1%：< 0 宽松，< 1 接近中性，1–2 偏紧，≥ 2 紧缩"}
-    if cur is not None and ye is not None:
-        anchors["year_end"] = f"当前 EFFR {cur:.2f}%：{moves(ye)}"
-    if cur is not None and ny is not None:
-        t = f"当前 EFFR {cur:.2f}%：{moves(ny)}"
-        if gap is not None:
-            t = f"点阵图 {dot_ny:.2f}%：{_hi_lo(gap * 100, 0, 'bp')}；" + t
-        anchors["next_year"] = t
     return {"label": label, "why": why, "head": _head(why), "summary": summary, "anchors": anchors,
             "level": None, "split": False, "hikes": n}
+
+
+_HIKE = re.compile(r"隐含(加息|降息)\s*([\d.]+)\s*次")
+# 旧备注是「4.00 - 4.25(51.9%)」，新备注把概率拿掉，只留「4.00 - 4.25」
+_BAND = re.compile(r"最大概率区间\s*([\d.]+)\s*-\s*([\d.]+)(?:\s*[（(]\s*([\d.]+)\s*%\s*[）)])?")
+_LEVEL = {"": 0, "关注": 1, "重要": 2}
+
+
+def stronger(a: str, b: str) -> str:
+    return a if _LEVEL.get(a, 0) >= _LEVEL.get(b, 0) else b
+
+
+def _bp(delta: float) -> float:
+    """百分点差换成基点，保留一位小数，避开二进制误差。"""
+    return round(delta * 100, 1)
+
+
+def _move_text(delta: float) -> str:
+    bp = _bp(delta)
+    num = f"{abs(bp):.1f}".rstrip("0").rstrip(".")
+    return f"{'上涨' if bp > 0 else '下跌'} {num}bp"
+
+
+def daily_delta(series: list[tuple[date, float]]) -> float | None:
+    """上一条正好是前一天时，才算当日变动。"""
+    if len(series) < 2:
+        return None
+    (d0, v0), (d1, v1) = series[-2], series[-1]
+    if (d1 - d0).days != 1:
+        return None
+    return v1 - v0
+
+
+def five_day_delta(series: list[tuple[date, float]]) -> float | None:
+    """最新值减去 5 个日历日之前最后一条。历史不够就不算。"""
+    if not series:
+        return None
+    end_d, end_v = series[-1]
+    prior = [v for d, v in series if d <= end_d - timedelta(days=5)]
+    if not prior:
+        return None
+    return end_v - prior[-1]
+
+
+def tenor_signals(series: list[tuple[date, float]]) -> tuple[str, list[str]]:
+    """单条隐含利率的关注 / 重要。
+
+    当日变动达到 5bp 为关注，大于 10bp 为重要。
+    5 日累计超过 5bp、以及超过 0.1%（10bp），都是关注。
+    """
+    level, reasons = "", []
+    daily = daily_delta(series)
+    if daily is not None:
+        bp = abs(_bp(daily))
+        if bp > 10:
+            level = "重要"
+            reasons.append(f"当日{_move_text(daily)}，大于 10bp")
+        elif bp >= 5:
+            level = "关注"
+            reasons.append(f"当日{_move_text(daily)}，达到 5bp")
+    five = five_day_delta(series)
+    if five is not None:
+        bp = abs(_bp(five))
+        if bp > 10:
+            level = stronger(level, "关注")
+            reasons.append(f"5 日累计{_move_text(five)}，超过 0.1%")
+        elif bp > 5:
+            level = stronger(level, "关注")
+            reasons.append(f"5 日累计{_move_text(five)}，超过 5bp")
+    return level, reasons
+
+
+def cross_signal(meeting: list[tuple[date, float]], year: list[tuple[date, float]]) -> tuple[str, list[str]]:
+    """下次会议和年底：方向相反，或一个超过 5bp、另一个几乎不动（不足 1bp），都提示关注。"""
+    dm, dy = daily_delta(meeting), daily_delta(year)
+    if dm is None or dy is None:
+        return "", []
+    bm, by = abs(_bp(dm)), abs(_bp(dy))
+    if (bm > 5 and by <= 1) or (by > 5 and bm <= 1):
+        if bm > 5:
+            return "关注", ["下次会议当日变动超过 5bp，年底几乎不动"]
+        return "关注", ["年底当日变动超过 5bp，下次会议几乎不动"]
+    if dm * dy < 0 and bm > 1 and by > 1:
+        return "关注", ["下次会议与年底的当日变动方向相反"]
+    return "", []
+
+
+def implied_anchor(remark: str, level: str = "", reasons: list[str] | None = None) -> str:
+    """对照：隐含加息次数和最大概率区间；有信号时接上理由。"""
+    remark = remark or ""
+    hike, band = _HIKE.search(remark), _BAND.search(remark)
+    parts = []
+    if hike:
+        parts.append(f"隐含{hike.group(1)}{hike.group(2)}次")
+    if band:
+        rng = f"最大概率区间 {band.group(1)} - {band.group(2)}"
+        if band.group(3):
+            rng += f"（{band.group(3)}%）"
+        parts.append(rng)
+    text = "，".join(parts)
+    reasons = [r for r in (reasons or []) if r]
+    if level and reasons:
+        text = (text + "。" if text else "") + f"{level}：" + "；".join(reasons)
+    return text
 
 
 # 增长 × 通胀九宫格：每格一句白话，说明这个名字是什么意思
