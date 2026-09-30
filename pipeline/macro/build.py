@@ -571,14 +571,6 @@ class MacroBuilder:
             return ""
         return max(rows, key=lambda r: r["date"]).get("remark") or ""
 
-    def meeting_series(self) -> tuple[list[tuple[date, float]], str]:
-        """下次会议。还没有单独记录时整段用下月；有了之后，更早的对比仍用下月。"""
-        meet, nxt = self._expect_pts("effr_meet"), self._expect_pts("effr_next")
-        if not meet:
-            return nxt, "尚无单独的下次会议记录，暂用下月"
-        hist = [(d, v) for d, v in nxt if d < meet[0][0]]
-        return hist + meet, "更早的对比用下月" if hist else ""
-
     def path_values(self, next_meet: float | None = None) -> dict:
         effr = self.s("EFFR")
         latest = self.latest_expect()
@@ -587,7 +579,7 @@ class MacroBuilder:
         dmap = {d.year: v for d, v in self.s("FEDTARMD")}
         lr = self.s("FEDTARMDLR")
         if next_meet is None:
-            next_meet = get("effr_meet") if "effr_meet" in latest else get("effr_next")
+            next_meet = get("effr_next")
         return {"current": effr[-1][1] if effr else None, "next_meet": next_meet,
                 "year_end": get("effr_year"), "next_year": get("effr_ny"),
                 "dot_year": dmap.get(ref_year), "dot_next": dmap.get(ref_year + 1),
@@ -624,7 +616,7 @@ class MacroBuilder:
         dgs10 = self.w("DGS10")
         real10 = self.w("DFII10")
 
-        meet_s, meet_note = self.meeting_series()
+        meet_s = self._expect_pts("effr_next")
         year_s, ny_s = self._expect_pts("effr_year"), self._expect_pts("effr_ny")
         exp_lines = [
             Line("下次会议", meet_s),
@@ -658,8 +650,7 @@ class MacroBuilder:
         metrics = [
             Metric("real_policy", "实际政策利率", real_policy, "%", "{:.2f}", chart="real_policy",
                    note="EFFR − 核心 PCE 同比"),
-            Metric("meeting", "市场隐含下次会议 EFFR", exp_lines[0].data, "%", "{:.3f}", "O", "effr_path",
-                   note=meet_note),
+            Metric("meeting", "市场隐含下次会议 EFFR", exp_lines[0].data, "%", "{:.3f}", "O", "effr_path"),
             Metric("year_end", "市场隐含年底 EFFR", exp_lines[1].data, "%", "{:.3f}", "O", "effr_path"),
             Metric("next_year", "市场隐含明年底 EFFR", exp_lines[2].data, "%", "{:.3f}", "O", "effr_path"),
         ]
@@ -668,7 +659,7 @@ class MacroBuilder:
         year_lvl, year_why = I.tenor_signals(year_s)
         ny_lvl, ny_why = I.tenor_signals(ny_s)
         cross_lvl, cross_why = I.cross_signal(meet_s, year_s)
-        meet_remark = self._expect_remark("effr_meet") or self._expect_remark("effr_next")
+        meet_remark = self._expect_remark("effr_next")
         state["anchors"]["meeting"] = I.implied_anchor(meet_remark, I.stronger(meet_lvl, cross_lvl), meet_why + cross_why)
         state["anchors"]["year_end"] = I.implied_anchor(
             self._expect_remark("effr_year"), I.stronger(year_lvl, cross_lvl), year_why + cross_why)
