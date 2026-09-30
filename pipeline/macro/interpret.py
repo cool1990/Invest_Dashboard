@@ -285,6 +285,42 @@ def inflation_state(v: dict) -> dict:
             "level": level, "split": False, "mom": mom, "nowcast_gap": nc_gap, "nowcast_word": nc_word}
 
 
+_CREDIT_BANDS = {"hy": (3.0, 4.5, 6.0, 8.0), "ig": (0.9, 1.3, 1.8, 2.5)}
+_CREDIT_NAMES = ("乐观", "正常", "紧张", "压力", "危机")
+_CREDIT_RULE = {
+    "hy": "< 3% 乐观，3–4.5% 正常，4.5–6% 紧张，6–8% 压力，≥ 8% 危机",
+    "ig": "< 0.9% 乐观，0.9–1.3% 正常，1.3–1.8% 紧张，1.8–2.5% 压力，≥ 2.5% 危机",
+}
+# (明显的下限，大幅必须严格大于这个数)。单位是百分点，25bp = 0.25。
+_SPREAD = {"hy": (0.25, 0.50), "ig": (0.05, 0.10)}
+
+
+def credit_level(kind: str, value: float) -> str:
+    """利差水平：低于第一档为乐观，越高越紧，过最后一档为危机。"""
+    i = 0
+    for cut in _CREDIT_BANDS[kind]:
+        if value < cut:
+            break
+        i += 1
+    return _CREDIT_NAMES[i]
+
+
+def credit_anchor(kind: str, value: float) -> str:
+    return f"当前为{credit_level(kind, value)}。{_CREDIT_RULE[kind]}"
+
+
+def _spread_status(metric_id: str, delta: float) -> dict:
+    """较上期：上升为走阔，下降为收窄。垃圾债 25/50bp，投资级 5/10bp。"""
+    mild, strong = _SPREAD[metric_id]
+    mag = abs(delta)
+    if mag < mild or delta == 0:
+        return {"key": "calm", "label": "平稳"}
+    wide = delta > 0
+    if mag > strong:
+        return {"key": "wide2" if wide else "tight2", "label": "大幅走阔" if wide else "大幅收窄"}
+    return {"key": "wide1" if wide else "tight1", "label": "明显走阔" if wide else "明显收窄"}
+
+
 def liquidity_state(v: dict) -> dict:
     sofr, ratio, nfci_v, hy_v = v.get("sofr_iorb"), v.get("reserves_ratio"), v.get("nfci"), v.get("hy")
     if sofr is not None and sofr > 0 or ratio is not None and ratio < 9:
@@ -294,7 +330,10 @@ def liquidity_state(v: dict) -> dict:
     else:
         fund, fl = "充裕", "ok"
     fin = None if nfci_v is None else "宽松" if nfci_v < -0.3 else "略松" if nfci_v < 0 else "偏紧"
-    cred = None if hy_v is None else "很窄" if hy_v < 3 else "正常" if hy_v < 5 else "走阔"
+    ig_v = v.get("ig")
+    hy_lvl = credit_level("hy", hy_v) if hy_v is not None else None
+    ig_lvl = credit_level("ig", ig_v) if ig_v is not None else None
+    cred = hy_lvl
     loose = fin in ("宽松", "略松") and fund != "偏紧"
     label = "宽松，资金面需留意" if loose and fl != "ok" else "宽松" if loose else \
         "资金面偏紧" if fund == "偏紧" else "中性"
@@ -309,8 +348,10 @@ def liquidity_state(v: dict) -> dict:
         ("资金面", fund_t) if sofr is not None or ratio is not None else None,
         ("金融条件", f"芝加哥联储 NFCI {nfci_v:.2f}，" + {"宽松": "低于 −0.3，宽松", "略松": "在 −0.3 到 0 之间，略松",
                                                      "偏紧": "高于 0（历史平均），偏紧"}[fin]) if fin else None,
-        ("信用", f"高收益债利差 {hy_v:.2f}%，" + {"很窄": "低于 3%，很窄；风险偏好高，但出事时缓冲薄",
-                                              "正常": "在 3–5% 的正常区间", "走阔": "高于 5%，已走阔"}[cred]) if cred else None,
+        ("信用", "；".join(x for x in (
+            None if hy_v is None else f"高收益债利差 {hy_v:.2f}%，{hy_lvl}",
+            None if ig_v is None else f"投资级利差 {ig_v:.2f}%，{ig_lvl}",
+        ) if x)) if hy_v is not None or ig_v is not None else None,
     )
     summary = "，".join(x for x in (fin and f"金融条件{fin}", cred and f"信用利差{cred}") if x)
     if sofr is not None or ratio is not None:
@@ -319,7 +360,8 @@ def liquidity_state(v: dict) -> dict:
         "sofr_iorb": "高于 0 说明回购资金偏紧",
         "reserves_ratio": "充足下限估计约 9–11%",
         "nfci": "0 为历史平均；< 0 略松，< −0.3 宽松",
-        "hy": "3–5% 正常；< 3% 很窄，风险偏好高但缓冲薄",
+        "hy": credit_anchor("hy", hy_v) if hy_v is not None else "",
+        "ig": credit_anchor("ig", ig_v) if ig_v is not None else "",
     }
     return {"label": label, "why": why, "head": _head(why), "summary": summary, "anchors": anchors,
             "level": None, "split": False}
@@ -376,7 +418,7 @@ _CHANGE = {
     "sofr_iorb": (False, 2.0, 5.0, False),
     "reserves_ratio": (True, 0.3, 0.8, False),
     "nfci": (False, 0.1, 0.25, False),
-    "hy": (False, 0.2, 0.5, False),
+    # 信用利差的状态在 change_status 里单独写：走阔 / 收窄，不套用好坏。
     "deficit": (True, 0.3, 0.5, False),
     "interest": (False, 0.1, 0.25, False),
     "debt": (False, 1.0, 3.0, False),
@@ -389,8 +431,12 @@ _CHANGE = {
 
 def change_status(metric_id: str, delta: float | None) -> dict | None:
     """较上期的变动 → 固定状态。没有这条规则或没有上期时返回 None。"""
+    if delta is None:
+        return None
+    if metric_id in _SPREAD:
+        return _spread_status(metric_id, delta)
     spec = _CHANGE.get(metric_id)
-    if spec is None or delta is None:
+    if spec is None:
         return None
     up_good, mild, strong, strict = spec
     mag = abs(delta)

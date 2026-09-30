@@ -451,6 +451,7 @@ class MacroBuilder:
         effr_iorb = ts.scale(ts.combine(lambda a, b: a - b, self.s("EFFR"), iorb), 100)
         nfci = self.s("NFCI")
         hy = self.w("BAMLH0A0HYM2")
+        ig = self.w("BAMLC0A0CM")
         usd = self.w("DTWEXBGS")
 
         groups = [
@@ -481,24 +482,28 @@ class MacroBuilder:
                          "2021-07 前用 IOER。"),
                 Chart("nfci", "芝加哥联储金融状况指数 NFCI", "指数", [Line("NFCI", nfci)],
                       note="0 为历史平均，正值偏紧、负值偏松。", core=True),
-                Chart("hy", "高收益债利差", "%", [Line("HY OAS", hy)],
-                      note="FRED 上的 ICE 数据只保留近几年。"),
+                Chart("hy", "信用利差", "%", [
+                    Line("高收益 OAS", hy), Line("投资级 OAS", ig)],
+                      note="ICE 美银期权调整利差，FRED 上只保留近几年。高收益是 BAMLH0A0HYM2，投资级是 BAMLC0A0CM。"),
                 Chart("usd", "美元广义指数", "指数", [Line("美元指数", usd)], start=date(2006, 1, 1)),
             )),
         ]
         gdp = self.s("GDP")
         ratio = [(d, v / g * 100) for d, v in fr["reserves"] if (g := ts.asof(gdp, d, 200))]
         hy_d = self.s("BAMLH0A0HYM2")
+        ig_d = self.s("BAMLC0A0CM")
         metrics = [
             Metric("sofr_iorb", "SOFR − IORB", sofr_iorb, "基点", "{:+.0f}", "D", "sofr_iorb"),
             Metric("reserves_ratio", "准备金占 GDP", ratio, "%", "{:.1f}", "W", "reserves_stack",
                    note=f"准备金 {fr['reserves'][-1][1]:,.0f} 十亿美元" if fr["reserves"] else ""),
             Metric("nfci", "金融状况 NFCI", nfci, "指数", "{:.2f}", "W", "nfci"),
             Metric("hy", "高收益债利差", hy_d, "%", "{:.2f}", "D", "hy"),
+            Metric("ig", "投资级利差", ig_d, "%", "{:.2f}", "D", "hy"),
         ]
         state = I.liquidity_state({
             "sofr_iorb": sofr_iorb[-1][1] if sofr_iorb else None, "reserves_ratio": ratio[-1][1] if ratio else None,
             "nfci": nfci[-1][1] if nfci else None, "hy": hy_d[-1][1] if hy_d else None,
+            "ig": ig_d[-1][1] if ig_d else None,
         })
         return groups, metrics, state
 
