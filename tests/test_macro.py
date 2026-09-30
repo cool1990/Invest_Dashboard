@@ -494,6 +494,8 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(m["meeting"]["text"], "3.998")
         self.assertEqual(m["meeting"]["note"], "")
         self.assertEqual(m["meeting"]["chg"]["base"], "4.061")
+        self.assertEqual(m["meeting"]["move"]["label"], "略转鸽")
+        self.assertEqual(m["meeting"]["status"]["label"], "按兵不动")
         self.assertIn("隐含加息0.5次，最大概率区间 3.75 - 4.00（52.9%）", m["meeting"]["anchor"])
         self.assertIn("略转鸽：当日下跌 6.3bp，达到 5bp", m["meeting"]["anchor"])
         self.assertIn("隐含加息1.3次，最大概率区间 4.00 - 4.25（51.9%）", m["year_end"]["anchor"])
@@ -502,6 +504,8 @@ class DashboardTest(unittest.TestCase):
         self.assertIn("隐含加息3.6次", m["next_year"]["anchor"])
         self.assertNotIn("转鹰", m["next_year"]["anchor"])
         self.assertNotIn("转鸽", m["next_year"]["anchor"])
+        self.assertEqual(m["year_end"]["status"]["label"], "定价加息约 1.3 次")
+        self.assertEqual(m["next_year"]["status"]["label"], "定价加息约 3.6 次")
 
 
 class CreditSpreadTest(unittest.TestCase):
@@ -510,35 +514,64 @@ class CreditSpreadTest(unittest.TestCase):
                          ["乐观", "正常", "紧张", "压力", "危机"])
         self.assertEqual([I.credit_level("ig", x) for x in (0.8, 0.9, 1.3, 1.8, 2.5)],
                          ["乐观", "正常", "紧张", "压力", "危机"])
+        self.assertEqual(I.credit_status("hy", 3.02)["label"], "正常")
+        self.assertEqual(I.credit_status("ig", 0.83)["label"], "乐观")
 
     def test_change(self):
-        self.assertEqual(I.change_status("hy", 0.24)["label"], "平稳")
-        self.assertEqual(I.change_status("hy", 0.25)["label"], "明显走阔")
-        self.assertEqual(I.change_status("hy", -0.50)["label"], "明显收窄")
-        self.assertEqual(I.change_status("hy", 0.51)["label"], "大幅走阔")
-        self.assertEqual(I.change_status("ig", 0.04)["label"], "平稳")
-        self.assertEqual(I.change_status("ig", -0.05)["label"], "明显收窄")
-        self.assertEqual(I.change_status("ig", 0.10)["label"], "明显走阔")
-        self.assertEqual(I.change_status("ig", 0.11)["label"], "大幅走阔")
-        self.assertIn("当前为正常", I.credit_anchor("hy", 3.02))
+        self.assertEqual(I.change_move("hy", 0.24)["label"], "平稳")
+        self.assertEqual(I.change_move("hy", 0.25)["label"], "明显走阔")
+        self.assertEqual(I.change_move("hy", -0.50)["label"], "明显收窄")
+        self.assertEqual(I.change_move("hy", 0.51)["label"], "大幅走阔")
+        self.assertEqual(I.change_move("ig", 0.04)["label"], "平稳")
+        self.assertEqual(I.change_move("ig", -0.05)["label"], "明显收窄")
+        self.assertEqual(I.change_move("ig", 0.10)["label"], "明显走阔")
+        self.assertEqual(I.change_move("ig", 0.11)["label"], "大幅走阔")
+        self.assertEqual(I.credit_anchor("hy"), "< 3% 乐观，3–4.5% 正常，4.5–6% 紧张，6–8% 压力，≥ 8% 危机")
+        self.assertNotIn("当前为", I.credit_anchor("hy", 3.02))
 
 
 class ChangeStatusTest(unittest.TestCase):
     def test_degree_and_direction(self):
-        self.assertEqual(I.change_status("meeting", -0.058)["label"], "略转鸽")
-        self.assertEqual(I.change_status("meeting", -0.12)["label"], "明显转鸽")
-        self.assertEqual(I.change_status("meeting", 0.10)["label"], "略转鹰")
-        self.assertEqual(I.change_status("meeting", 0.101)["label"], "明显转鹰")
-        self.assertEqual(I.change_status("meeting", 0.02)["label"], "持平")
-        self.assertEqual(I.change_status("nfp3", 30)["label"], "略转好")
-        self.assertEqual(I.change_status("nfp3", 60)["label"], "明显转好")
-        self.assertEqual(I.change_status("unrate", 0.2)["label"], "略转差")
-        self.assertEqual(I.change_status("unrate", 0.3)["label"], "明显转差")
-        self.assertEqual(I.change_status("core_yoy", -0.15)["label"], "略转好")
-        self.assertIsNone(I.change_status("nope", 1))
-        labels = {I.change_status(k, 1)["label"] for k in ("nfp3", "unrate", "core_yoy", "deficit")}
+        self.assertEqual(I.change_move("meeting", -0.058)["label"], "略转鸽")
+        self.assertEqual(I.change_move("meeting", -0.12)["label"], "明显转鸽")
+        self.assertEqual(I.change_move("meeting", 0.10)["label"], "略转鹰")
+        self.assertEqual(I.change_move("meeting", 0.101)["label"], "明显转鹰")
+        self.assertEqual(I.change_move("meeting", 0.02)["label"], "持平")
+        self.assertEqual(I.change_move("nfp3", 30)["label"], "略转好")
+        self.assertEqual(I.change_move("nfp3", 60)["label"], "明显转好")
+        self.assertEqual(I.change_move("unrate", 0.2)["label"], "略转差")
+        self.assertEqual(I.change_move("unrate", 0.3)["label"], "明显转差")
+        self.assertEqual(I.change_move("core_yoy", -0.15)["label"], "略转好")
+        self.assertIsNone(I.change_move("nope", 1))
+        labels = {I.change_move(k, 1)["label"] for k in ("nfp3", "unrate", "core_yoy", "deficit")}
         self.assertTrue(labels <= {"明显转好", "略转好", "持平", "略转差", "明显转差"})
-        self.assertEqual(I.change_status("meeting", 1)["label"], "明显转鹰")
+        self.assertEqual(I.change_move("meeting", 1)["label"], "明显转鹰")
+
+
+class LevelStatusTest(unittest.TestCase):
+    def test_bands(self):
+        self.assertEqual(I.level_status("core_gdp", 4.2)["label"], "偏强")
+        self.assertEqual(I.level_status("core_gdp", 2.0)["label"], "接近潜在")
+        self.assertEqual(I.level_status("nfp3", 71)["label"], "降温")
+        self.assertEqual(I.level_status("nfp3", 160)["label"], "强")
+        self.assertEqual(I.level_status("core_yoy", 3.34)["label"], "明显高于目标")
+        self.assertEqual(I.level_status("core_yoy", 2.1)["label"], "接近目标")
+        self.assertEqual(I.level_status("supercore", 3.92)["label"], "粘性强")
+        self.assertEqual(I.level_status("fwd", 2.36)["label"], "锚定")
+        self.assertEqual(I.level_status("hy", 3.02)["label"], "正常")
+        self.assertEqual(I.level_status("ig", 0.83)["label"], "乐观")
+        self.assertEqual(I.level_status("nfci", -0.56)["label"], "宽松")
+        self.assertEqual(I.level_status("reserves_ratio", 9.1)["label"], "接近下限")
+        self.assertEqual(I.level_status("sofr_iorb", 0)["label"], "不紧")
+        self.assertEqual(I.level_status("deficit", 5.4, {"deficit_chg12": -0.7})["label"], "收缩")
+        self.assertEqual(I.level_status("interest", 3.84)["label"], "高")
+        self.assertEqual(I.level_status("real_policy", 0.28)["label"], "接近中性")
+        self.assertEqual(I.level_status("meeting", 4.20, {"current": 3.88})["label"], "定价加息约 1.3 次")
+        self.assertEqual(I.level_status("meeting", 3.90, {"current": 3.88})["label"], "按兵不动")
+        self.assertEqual(I.level_status("meeting", 4.05, {"current": 3.88})["label"], "定价加息")
+        self.assertEqual(I.level_status("unrate", 4.1, {"unrate_chg12": -0.2, "sahm": -0.07})["label"], "下降")
+        self.assertEqual(I.level_status("core_3m", 3.05, {"core_yoy": 3.34})["label"], "短期动能持平")
+        self.assertEqual(I.level_status("nowcast", 3.49, {"nowcast_gap": 0.15})["label"], "略高")
 
 
 class EffrSignalTest(unittest.TestCase):

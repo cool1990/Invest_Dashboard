@@ -60,9 +60,13 @@ def core_cpi_mom(c: Ctx) -> Result:
 #   why      理由，每条 {"k": 小结论, "t": 用哪几个数、对照什么锚点得出的}；标签不在理由里重复
 #   head     理由连成一句，写进判断变化日志
 #   summary  给顶部总结用的一句白话，不带数字（数字都在理由和依据里）
-#   anchors  {指标 id: 对照的锚点}，第二层每个数旁边的那一列
+#   anchors  {指标 id: 对照的判断逻辑}，第二层「对照」列
 #   level    给整体环境用的档位（增长 / 通胀：+1 / 0 / −1）
 #   split    是否存在明显分歧
+#
+# 第二层每个数另有两列，在 build 里按指标 id 补上：
+#   move     较上期变动（明显转好 / 略转好 / …）
+#   status   当前水平（乐观 / 紧张 / 正常 / 偏强 / 接近目标 等）
 
 def _f(x: float | None, fmt: str = "{:.1f}") -> str:
     return "—" if x is None else fmt.format(x)
@@ -159,14 +163,9 @@ def growth_state(v: dict) -> dict:
 
     if nfp3 is None:
         l, l_txt = None, "数据不足"
-    elif (sahm is not None and sahm >= 0.5) or (u12 is not None and u12 >= 0.5) or nfp3 < 0:
-        l, l_txt = -1, "恶化"
-    elif nfp3 >= 150 and (u12 is None or u12 <= 0.2):
-        l, l_txt = 1, "强"
-    elif nfp3 >= 50:
-        l, l_txt = 0, "降温"
     else:
-        l, l_txt = -1, "疲弱"
+        l_txt = _labor_band(nfp3, u12, sahm)
+        l = {"强": 1, "降温": 0, "疲弱": -1, "恶化": -1}[l_txt]
     u_txt = ""
     if ur is not None and u12 is not None:
         u_txt = f"失业率 {ur:.1f}%，" + ("与一年前持平" if abs(u12) < 0.05 else f"比一年前{_hi_lo(u12, 1)}")
@@ -287,12 +286,17 @@ def inflation_state(v: dict) -> dict:
 
 _CREDIT_BANDS = {"hy": (3.0, 4.5, 6.0, 8.0), "ig": (0.9, 1.3, 1.8, 2.5)}
 _CREDIT_NAMES = ("乐观", "正常", "紧张", "压力", "危机")
+_CREDIT_KEYS = ("optimistic", "normal", "tight", "stress", "crisis")
 _CREDIT_RULE = {
     "hy": "< 3% 乐观，3–4.5% 正常，4.5–6% 紧张，6–8% 压力，≥ 8% 危机",
     "ig": "< 0.9% 乐观，0.9–1.3% 正常，1.3–1.8% 紧张，1.8–2.5% 压力，≥ 2.5% 危机",
 }
 # (明显的下限，大幅必须严格大于这个数)。单位是百分点，25bp = 0.25。
 _SPREAD = {"hy": (0.25, 0.50), "ig": (0.05, 0.10)}
+
+
+def _st(key: str, label: str) -> dict:
+    return {"key": key, "label": label}
 
 
 def credit_level(kind: str, value: float) -> str:
@@ -305,20 +309,30 @@ def credit_level(kind: str, value: float) -> str:
     return _CREDIT_NAMES[i]
 
 
-def credit_anchor(kind: str, value: float) -> str:
-    return f"当前为{credit_level(kind, value)}。{_CREDIT_RULE[kind]}"
+def credit_status(kind: str, value: float) -> dict:
+    i = 0
+    for cut in _CREDIT_BANDS[kind]:
+        if value < cut:
+            break
+        i += 1
+    return _st(_CREDIT_KEYS[i], _CREDIT_NAMES[i])
 
 
-def _spread_status(metric_id: str, delta: float) -> dict:
+def credit_anchor(kind: str, value: float | None = None) -> str:
+    """对照只写分档规则；当前水平放在「状态」列。"""
+    return _CREDIT_RULE[kind]
+
+
+def _spread_move(metric_id: str, delta: float) -> dict:
     """较上期：上升为走阔，下降为收窄。垃圾债 25/50bp，投资级 5/10bp。"""
     mild, strong = _SPREAD[metric_id]
     mag = abs(delta)
     if mag < mild or delta == 0:
-        return {"key": "calm", "label": "平稳"}
+        return _st("calm", "平稳")
     wide = delta > 0
     if mag > strong:
-        return {"key": "wide2" if wide else "tight2", "label": "大幅走阔" if wide else "大幅收窄"}
-    return {"key": "wide1" if wide else "tight1", "label": "明显走阔" if wide else "明显收窄"}
+        return _st("wide2" if wide else "tight2", "大幅走阔" if wide else "大幅收窄")
+    return _st("wide1" if wide else "tight1", "明显走阔" if wide else "明显收窄")
 
 
 def liquidity_state(v: dict) -> dict:
@@ -360,8 +374,8 @@ def liquidity_state(v: dict) -> dict:
         "sofr_iorb": "高于 0 说明回购资金偏紧",
         "reserves_ratio": "充足下限估计约 9–11%",
         "nfci": "0 为历史平均；< 0 略松，< −0.3 宽松",
-        "hy": credit_anchor("hy", hy_v) if hy_v is not None else "",
-        "ig": credit_anchor("ig", ig_v) if ig_v is not None else "",
+        "hy": credit_anchor("hy"),
+        "ig": credit_anchor("ig"),
     }
     return {"label": label, "why": why, "head": _head(why), "summary": summary, "anchors": anchors,
             "level": None, "split": False}
@@ -395,7 +409,7 @@ def fiscal_state(v: dict) -> dict:
             "level": None, "split": False}
 
 
-# 较上期变动的状态。五个固定词，方便筛选：明显转好 / 略转好 / 持平 / 略转差 / 明显转差。
+# 较上期变动。五个固定词，方便筛选：明显转好 / 略转好 / 持平 / 略转差 / 明显转差。
 # 方向按这条指标自己的合意方向，不是涨跌本身：
 # 增长类数值上升为好（失业率相反）；通胀类上升为差；
 # 流动性里利差和 NFCI 上升为差，准备金占比上升为好；
@@ -418,7 +432,7 @@ _CHANGE = {
     "sofr_iorb": (False, 2.0, 5.0, False),
     "reserves_ratio": (True, 0.3, 0.8, False),
     "nfci": (False, 0.1, 0.25, False),
-    # 信用利差的状态在 change_status 里单独写：走阔 / 收窄，不套用好坏。
+    # 信用利差的变动在 change_move 里单独写：走阔 / 收窄，不套用好坏。
     "deficit": (True, 0.3, 0.5, False),
     "interest": (False, 0.1, 0.25, False),
     "debt": (False, 1.0, 3.0, False),
@@ -429,29 +443,178 @@ _CHANGE = {
 }
 
 
-def change_status(metric_id: str, delta: float | None) -> dict | None:
-    """较上期的变动 → 固定状态。没有这条规则或没有上期时返回 None。"""
+def change_move(metric_id: str, delta: float | None) -> dict | None:
+    """较上期的变动 → 固定词（明显转好 / 略转好 / …）。没有这条规则或没有上期时返回 None。"""
     if delta is None:
         return None
     if metric_id in _SPREAD:
-        return _spread_status(metric_id, delta)
+        return _spread_move(metric_id, delta)
     spec = _CHANGE.get(metric_id)
     if spec is None:
         return None
     up_good, mild, strong, strict = spec
     mag = abs(delta)
     if mag < mild:
-        return {"key": "flat", "label": "持平"}
+        return _st("flat", "持平")
     big = mag > strong if strict else mag >= strong
     # 隐含 EFFR：上升是转鹰，下降是转鸽，不套用别的指标的好坏。
     if metric_id in ("meeting", "year_end", "next_year"):
         if delta > 0:
-            return {"key": "hawk2", "label": "明显转鹰"} if big else {"key": "hawk1", "label": "略转鹰"}
-        return {"key": "dove2", "label": "明显转鸽"} if big else {"key": "dove1", "label": "略转鸽"}
+            return _st("hawk2", "明显转鹰") if big else _st("hawk1", "略转鹰")
+        return _st("dove2", "明显转鸽") if big else _st("dove1", "略转鸽")
     good = (delta > 0) == up_good
     if big:
-        return {"key": "good2", "label": "明显转好"} if good else {"key": "bad2", "label": "明显转差"}
-    return {"key": "good1", "label": "略转好"} if good else {"key": "bad1", "label": "略转差"}
+        return _st("good2", "明显转好") if good else _st("bad2", "明显转差")
+    return _st("good1", "略转好") if good else _st("bad1", "略转差")
+
+
+# 兼容旧名
+change_status = change_move
+
+
+_OUTPUT_KEYS = {"偏强": "strong", "接近潜在": "potential", "低于潜在": "below", "停滞或收缩": "stall"}
+_LABOR_KEYS = {"强": "strong", "降温": "cool", "疲弱": "weak", "恶化": "worse"}
+
+
+def _labor_band(nfp3: float, u12: float | None = None, sahm: float | None = None) -> str:
+    if (sahm is not None and sahm >= 0.5) or (u12 is not None and u12 >= 0.5) or nfp3 < 0:
+        return "恶化"
+    if nfp3 >= 150 and (u12 is None or u12 <= 0.2):
+        return "强"
+    if nfp3 >= 50:
+        return "降温"
+    return "疲弱"
+
+
+def _inflation_band(yoy: float) -> tuple[str, str]:
+    gap = yoy - 2
+    if gap >= 0.75:
+        return "hot2", "明显高于目标"
+    if gap >= 0.25:
+        return "hot1", "略高于目标"
+    if gap > -0.25:
+        return "on_target", "接近目标"
+    return "cold", "低于目标"
+
+
+def path_status(current: float | None, implied: float | None) -> dict | None:
+    """市场隐含路径相对当前 EFFR：定价加息 / 定价降息 / 按兵不动。"""
+    if current is None or implied is None:
+        return None
+    n = (implied - current) / 0.25
+    if abs(n) <= 0.5:
+        return _st("hold", "按兵不动")
+    if n > 0:
+        return _st("hike", f"定价加息约 {abs(n):.1f} 次") if abs(n) >= 1 else _st("hike", "定价加息")
+    return _st("cut", f"定价降息约 {abs(n):.1f} 次") if abs(n) >= 1 else _st("cut", "定价降息")
+
+
+def level_status(metric_id: str, value: float | None, extra: dict | None = None) -> dict | None:
+    """指标当前水平 →「状态」列。对照列只写分档规则，不重复水平词。"""
+    if value is None:
+        return None
+    extra = extra or {}
+    if metric_id in ("core_gdp", "gdp_q", "gdpnow", "real_pce"):
+        _, txt = _output_band(value)
+        return _st(_OUTPUT_KEYS[txt], txt)
+    if metric_id == "nfp3":
+        txt = _labor_band(value, extra.get("unrate_chg12"), extra.get("sahm"))
+        return _st(_LABOR_KEYS[txt], txt)
+    if metric_id == "unrate":
+        sahm, u12 = extra.get("sahm"), extra.get("unrate_chg12")
+        if sahm is not None and sahm >= 0.5:
+            return _st("alert", "警报")
+        if u12 is not None and u12 >= 0.5:
+            return _st("up2", "明显上升")
+        if u12 is not None and u12 <= -0.5:
+            return _st("down2", "明显下降")
+        if u12 is not None and u12 >= 0.2:
+            return _st("up1", "上升")
+        if u12 is not None and u12 <= -0.2:
+            return _st("down1", "下降")
+        return _st("stable", "平稳")
+    if metric_id == "core_capex":
+        # 设备投资同比：≥ 5 偏强，0–5 平稳，< 0 走弱
+        if value >= 5:
+            return _st("strong", "偏强")
+        if value >= 0:
+            return _st("stable", "平稳")
+        return _st("weak", "走弱")
+    if metric_id == "core_yoy":
+        return _st(*_inflation_band(value))
+    if metric_id == "core_3m":
+        yoy = extra.get("core_yoy")
+        if yoy is None:
+            return _st(*_inflation_band(value))
+        mom = value - yoy
+        if mom > 0.3:
+            return _st("accel", "短期在加速")
+        if mom < -0.3:
+            return _st("slow", "短期在放缓")
+        return _st("flat_mom", "短期动能持平")
+    if metric_id == "supercore":
+        if value <= 2.75:
+            return _st("cooled", "已降温")
+        if value < 3.5:
+            return _st("elevated", "偏高")
+        return _st("sticky", "粘性强")
+    if metric_id == "fwd":
+        if 2 <= value <= 2.5:
+            return _st("anchored", "锚定")
+        if value > 2.5:
+            return _st("upshift", "上移")
+        return _st("low", "偏低")
+    if metric_id == "nowcast":
+        gap = extra.get("nowcast_gap")
+        if gap is None:
+            return None
+        word = _nowcast_word(gap)
+        key = {"明显偏高": "high2", "略高": "high1", "持平": "flat", "略低": "low1", "明显偏低": "low2"}[word]
+        return _st(key, word)
+    if metric_id == "sofr_iorb":
+        return _st("tight", "偏紧") if value > 0 else _st("ok", "不紧")
+    if metric_id == "reserves_ratio":
+        if value < 9:
+            return _st("tight", "低于下限")
+        if value < 11:
+            return _st("watch", "接近下限")
+        return _st("ample", "充裕")
+    if metric_id == "nfci":
+        if value < -0.3:
+            return _st("loose", "宽松")
+        if value < 0:
+            return _st("easy", "略松")
+        return _st("tight", "偏紧")
+    if metric_id in _SPREAD:
+        return credit_status(metric_id, value)
+    if metric_id == "deficit":
+        chg = extra.get("deficit_chg12")
+        if chg is None:
+            return None
+        if chg < -0.5:
+            return _st("contract", "收缩")
+        if chg > 0.5:
+            return _st("expand", "扩张")
+        return _st("neutral", "中性")
+    if metric_id == "interest":
+        if value >= 3:
+            return _st("high", "高")
+        if value >= 2.5:
+            return _st("elevated", "偏高")
+        return _st("ok", "可控")
+    if metric_id == "debt":
+        return _st("elevated", "偏高") if value >= 100 else _st("ok", "正常")
+    if metric_id == "real_policy":
+        if value < 0:
+            return _st("easy", "宽松")
+        if value < 1:
+            return _st("neutral", "接近中性")
+        if value < 2:
+            return _st("tight", "偏紧")
+        return _st("restrictive", "紧缩")
+    if metric_id in ("meeting", "year_end", "next_year"):
+        return path_status(extra.get("current"), value)
+    return None
 
 
 def policy_state(v: dict) -> dict:
