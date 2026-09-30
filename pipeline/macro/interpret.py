@@ -353,6 +353,61 @@ def fiscal_state(v: dict) -> dict:
             "level": None, "split": False}
 
 
+# 较上期变动的状态。五个固定词，方便筛选：明显转好 / 略转好 / 持平 / 略转差 / 明显转差。
+# 方向按这条指标自己的合意方向，不是涨跌本身：
+# 增长类数值上升为好（失业率相反）；通胀类上升为差；
+# 流动性里利差和 NFCI 上升为差，准备金占比上升为好；
+# 财政里赤字率上升视为对增长更托底（好），利息和债务上升为差；
+# 货币里实际利率和隐含 EFFR 上升是更紧，算差。
+# 每条：(上升算好, 略的下限, 明显的下限, 明显是否必须严格大于下限)。
+_CHANGE = {
+    "core_gdp": (True, 0.3, 1.0, False),
+    "gdp_q": (True, 0.3, 1.0, False),
+    "gdpnow": (True, 0.3, 1.0, False),
+    "nfp3": (True, 20.0, 50.0, False),
+    "unrate": (False, 0.1, 0.3, False),
+    "real_pce": (True, 0.5, 1.5, False),
+    "core_capex": (True, 1.0, 3.0, False),
+    "core_yoy": (False, 0.1, 0.3, False),
+    "core_3m": (False, 0.2, 0.5, False),
+    "supercore": (False, 0.1, 0.3, False),
+    "fwd": (False, 0.05, 0.15, False),
+    "nowcast": (False, 0.1, 0.3, False),
+    "sofr_iorb": (False, 2.0, 5.0, False),
+    "reserves_ratio": (True, 0.3, 0.8, False),
+    "nfci": (False, 0.1, 0.25, False),
+    "hy": (False, 0.2, 0.5, False),
+    "deficit": (True, 0.3, 0.5, False),
+    "interest": (False, 0.1, 0.25, False),
+    "debt": (False, 1.0, 3.0, False),
+    "real_policy": (False, 0.1, 0.25, False),
+    "meeting": (False, 0.05, 0.10, True),
+    "year_end": (False, 0.05, 0.10, True),
+    "next_year": (False, 0.05, 0.10, True),
+}
+
+
+def change_status(metric_id: str, delta: float | None) -> dict | None:
+    """较上期的变动 → 固定状态。没有这条规则或没有上期时返回 None。"""
+    spec = _CHANGE.get(metric_id)
+    if spec is None or delta is None:
+        return None
+    up_good, mild, strong, strict = spec
+    mag = abs(delta)
+    if mag < mild:
+        return {"key": "flat", "label": "持平"}
+    big = mag > strong if strict else mag >= strong
+    # 隐含 EFFR：上升是转鹰，下降是转鸽，不套用别的指标的好坏。
+    if metric_id in ("meeting", "year_end", "next_year"):
+        if delta > 0:
+            return {"key": "hawk2", "label": "明显转鹰"} if big else {"key": "hawk1", "label": "略转鹰"}
+        return {"key": "dove2", "label": "明显转鸽"} if big else {"key": "dove1", "label": "略转鸽"}
+    good = (delta > 0) == up_good
+    if big:
+        return {"key": "good2", "label": "明显转好"} if good else {"key": "bad2", "label": "明显转差"}
+    return {"key": "good1", "label": "略转好"} if good else {"key": "bad1", "label": "略转差"}
+
+
 def policy_state(v: dict) -> dict:
     real, cur, ye, ny, dot_ny = (v.get(k) for k in ("real_policy", "current", "year_end", "next_year", "dot_next"))
     stance = None if real is None else "宽松" if real < 0 else "接近中性" if real < 1 else "偏紧" if real < 2 else "紧缩"
@@ -400,7 +455,7 @@ def policy_state(v: dict) -> dict:
 _HIKE = re.compile(r"隐含(加息|降息)\s*([\d.]+)\s*次")
 # 旧备注是「4.00 - 4.25(51.9%)」，新备注把概率拿掉，只留「4.00 - 4.25」
 _BAND = re.compile(r"最大概率区间\s*([\d.]+)\s*-\s*([\d.]+)(?:\s*[（(]\s*([\d.]+)\s*%\s*[）)])?")
-_LEVEL = {"": 0, "关注": 1, "重要": 2}
+_LEVEL = {"": 0, "略转鸽": 1, "略转鹰": 1, "明显转鸽": 2, "明显转鹰": 2}
 
 
 def stronger(a: str, b: str) -> str:
@@ -439,50 +494,63 @@ def five_day_delta(series: list[tuple[date, float]]) -> float | None:
     return end_v - prior[-1]
 
 
-def tenor_signals(series: list[tuple[date, float]]) -> tuple[str, list[str]]:
-    """单条隐含利率的关注 / 重要。
+def _hawk_dove(delta: float, big: bool) -> str:
+    """利率上升为转鹰，下降为转鸽。"""
+    if delta > 0:
+        return "明显转鹰" if big else "略转鹰"
+    return "明显转鸽" if big else "略转鸽"
 
-    当日变动达到 5bp 为关注，大于 10bp 为重要。
-    5 日累计超过 5bp、以及超过 0.1%（10bp），都是关注。
+
+def tenor_signals(series: list[tuple[date, float]]) -> tuple[str, list[str]]:
+    """单条隐含利率。
+
+    当日变动达到 5bp 为略转鹰或略转鸽，大于 10bp 为明显转鹰或明显转鸽。
+    5 日累计超过 5bp、以及超过 0.1%（10bp），都只到「略」。
     """
     level, reasons = "", []
     daily = daily_delta(series)
     if daily is not None:
         bp = abs(_bp(daily))
         if bp > 10:
-            level = "重要"
+            level = _hawk_dove(daily, True)
             reasons.append(f"当日{_move_text(daily)}，大于 10bp")
         elif bp >= 5:
-            level = "关注"
+            level = _hawk_dove(daily, False)
             reasons.append(f"当日{_move_text(daily)}，达到 5bp")
     five = five_day_delta(series)
     if five is not None:
         bp = abs(_bp(five))
+        mild = _hawk_dove(five, False)
         if bp > 10:
-            level = stronger(level, "关注")
+            level = stronger(level, mild)
             reasons.append(f"5 日累计{_move_text(five)}，超过 0.1%")
         elif bp > 5:
-            level = stronger(level, "关注")
+            level = stronger(level, mild)
             reasons.append(f"5 日累计{_move_text(five)}，超过 5bp")
     return level, reasons
 
 
+def _turn_word(delta: float, bp: float) -> str:
+    if bp <= 1:
+        return "几乎不动"
+    return "转鹰" if delta > 0 else "转鸽"
+
+
 def cross_signal(meeting: list[tuple[date, float]], year: list[tuple[date, float]]) -> tuple[str, list[str]]:
-    """下次会议和年底：方向相反，或一个超过 5bp、另一个几乎不动（不足 1bp），都提示关注。"""
+    """下次会议（短期）和年底（长期）方向相反，或一个超过 5bp、另一个几乎不动，提示背离。"""
     dm, dy = daily_delta(meeting), daily_delta(year)
     if dm is None or dy is None:
         return "", []
     bm, by = abs(_bp(dm)), abs(_bp(dy))
-    if (bm > 5 and by <= 1) or (by > 5 and bm <= 1):
-        if bm > 5:
-            return "关注", ["下次会议当日变动超过 5bp，年底几乎不动"]
-        return "关注", ["年底当日变动超过 5bp，下次会议几乎不动"]
-    if dm * dy < 0 and bm > 1 and by > 1:
-        return "关注", ["下次会议与年底的当日变动方向相反"]
-    return "", []
+    opposite = dm * dy < 0 and bm > 1 and by > 1
+    one_sided = (bm > 5 and by <= 1) or (by > 5 and bm <= 1)
+    if not opposite and not one_sided:
+        return "", []
+    text = f"背离（短期{_turn_word(dm, bm)}，长期{_turn_word(dy, by)}）"
+    return "背离", [text]
 
 
-def implied_anchor(remark: str, level: str = "", reasons: list[str] | None = None) -> str:
+def implied_anchor(remark: str, level: str = "", reasons: list[str] | None = None, diverge: str = "") -> str:
     """对照：隐含加息次数和最大概率区间；有信号时接上理由。"""
     remark = remark or ""
     hike, band = _HIKE.search(remark), _BAND.search(remark)
@@ -496,8 +564,13 @@ def implied_anchor(remark: str, level: str = "", reasons: list[str] | None = Non
         parts.append(rng)
     text = "，".join(parts)
     reasons = [r for r in (reasons or []) if r]
+    bits = []
     if level and reasons:
-        text = (text + "。" if text else "") + f"{level}：" + "；".join(reasons)
+        bits.append(f"{level}：" + "；".join(reasons))
+    if diverge:
+        bits.append(diverge)
+    if bits:
+        text = (text + "。" if text else "") + "。".join(bits)
     return text
 
 

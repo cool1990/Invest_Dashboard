@@ -17,7 +17,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 
 from .. import series as ts
-from ..page import Chart, Line, Metric, metric_json, period_text
+from ..page import FREQ, Chart, Line, Metric, metric_json, period_text
 from ..series import Series
 from . import consensus as cons
 from . import interpret as I
@@ -658,11 +658,12 @@ class MacroBuilder:
         meet_lvl, meet_why = I.tenor_signals(meet_s)
         year_lvl, year_why = I.tenor_signals(year_s)
         ny_lvl, ny_why = I.tenor_signals(ny_s)
-        cross_lvl, cross_why = I.cross_signal(meet_s, year_s)
+        _, cross_why = I.cross_signal(meet_s, year_s)
         meet_remark = self._expect_remark("effr_next")
-        state["anchors"]["meeting"] = I.implied_anchor(meet_remark, I.stronger(meet_lvl, cross_lvl), meet_why + cross_why)
+        diverge = cross_why[0] if cross_why else ""
+        state["anchors"]["meeting"] = I.implied_anchor(meet_remark, meet_lvl, meet_why, diverge)
         state["anchors"]["year_end"] = I.implied_anchor(
-            self._expect_remark("effr_year"), I.stronger(year_lvl, cross_lvl), year_why + cross_why)
+            self._expect_remark("effr_year"), year_lvl, year_why, diverge)
         state["anchors"]["next_year"] = I.implied_anchor(self._expect_remark("effr_ny"), ny_lvl, ny_why)
         return groups, metrics, state
 
@@ -919,7 +920,15 @@ class MacroBuilder:
 
     # =====================================================================
     def metric_json(self, m: Metric, anchors: dict[str, str]) -> dict | None:
-        return metric_json(m, anchors, self.charts)
+        js = metric_json(m, anchors, self.charts)
+        if not js:
+            return None
+        n, _ = FREQ[m.freq]
+        delta = m.data[-1][1] - m.data[-1 - n][1] if len(m.data) > n else None
+        st = I.change_status(m.id, delta)
+        if st:
+            js["status"] = st
+        return js
 
     def build(self) -> dict:
         dims = [("growth", "增长", self.growth), ("inflation", "通胀", self.inflation),

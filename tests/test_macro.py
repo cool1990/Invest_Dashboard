@@ -495,12 +495,31 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(m["meeting"]["note"], "")
         self.assertEqual(m["meeting"]["chg"]["base"], "4.061")
         self.assertIn("隐含加息0.5次，最大概率区间 3.75 - 4.00（52.9%）", m["meeting"]["anchor"])
-        self.assertIn("关注：当日下跌 6.3bp，达到 5bp", m["meeting"]["anchor"])
+        self.assertIn("略转鸽：当日下跌 6.3bp，达到 5bp", m["meeting"]["anchor"])
         self.assertIn("隐含加息1.3次，最大概率区间 4.00 - 4.25（51.9%）", m["year_end"]["anchor"])
-        self.assertIn("当日下跌 5.9bp，达到 5bp", m["year_end"]["anchor"])
-        self.assertNotIn("方向相反", m["meeting"]["anchor"])
+        self.assertIn("略转鸽：当日下跌 5.9bp，达到 5bp", m["year_end"]["anchor"])
+        self.assertNotIn("背离", m["meeting"]["anchor"])
         self.assertIn("隐含加息3.6次", m["next_year"]["anchor"])
-        self.assertNotIn("关注", m["next_year"]["anchor"])
+        self.assertNotIn("转鹰", m["next_year"]["anchor"])
+        self.assertNotIn("转鸽", m["next_year"]["anchor"])
+
+
+class ChangeStatusTest(unittest.TestCase):
+    def test_degree_and_direction(self):
+        self.assertEqual(I.change_status("meeting", -0.058)["label"], "略转鸽")
+        self.assertEqual(I.change_status("meeting", -0.12)["label"], "明显转鸽")
+        self.assertEqual(I.change_status("meeting", 0.10)["label"], "略转鹰")
+        self.assertEqual(I.change_status("meeting", 0.101)["label"], "明显转鹰")
+        self.assertEqual(I.change_status("meeting", 0.02)["label"], "持平")
+        self.assertEqual(I.change_status("nfp3", 30)["label"], "略转好")
+        self.assertEqual(I.change_status("nfp3", 60)["label"], "明显转好")
+        self.assertEqual(I.change_status("unrate", 0.2)["label"], "略转差")
+        self.assertEqual(I.change_status("unrate", 0.3)["label"], "明显转差")
+        self.assertEqual(I.change_status("core_yoy", -0.15)["label"], "略转好")
+        self.assertIsNone(I.change_status("nope", 1))
+        labels = {I.change_status(k, 1)["label"] for k in ("nfp3", "unrate", "core_yoy", "deficit")}
+        self.assertTrue(labels <= {"明显转好", "略转好", "持平", "略转差", "明显转差"})
+        self.assertEqual(I.change_status("meeting", 1)["label"], "明显转鹰")
 
 
 class EffrSignalTest(unittest.TestCase):
@@ -509,22 +528,24 @@ class EffrSignalTest(unittest.TestCase):
         self.assertEqual(I.tenor_signals(flat), ("", []))
         watch = flat[:-1] + [(date(2026, 9, 29), 4.26)]  # 当日 +6bp，5 日不够
         level, reasons = I.tenor_signals(watch)
-        self.assertEqual(level, "关注")
+        self.assertEqual(level, "略转鹰")
         self.assertIn("当日上涨 6bp，达到 5bp", reasons)
         hot = [(date(2026, 9, 28), 4.20), (date(2026, 9, 29), 4.31)]
         level, reasons = I.tenor_signals(hot)
-        self.assertEqual(level, "重要")
+        self.assertEqual(level, "明显转鹰")
         self.assertIn("大于 10bp", reasons[0])
         # 正好 10bp 还不到「大于 10bp」
         edge = [(date(2026, 9, 28), 4.20), (date(2026, 9, 29), 4.30)]
-        self.assertEqual(I.tenor_signals(edge)[0], "关注")
+        self.assertEqual(I.tenor_signals(edge)[0], "略转鹰")
+        down = [(date(2026, 9, 28), 4.20), (date(2026, 9, 29), 4.14)]
+        self.assertEqual(I.tenor_signals(down)[0], "略转鸽")
         five = [(date(2026, 9, 20), 4.00), (date(2026, 9, 24), 4.00), (date(2026, 9, 25), 4.08)]
         level, reasons = I.tenor_signals(five)
-        self.assertEqual(level, "关注")
+        self.assertEqual(level, "略转鹰")
         self.assertTrue(any("5 日累计" in r and "超过 5bp" in r for r in reasons))
         five_big = [(date(2026, 9, 20), 4.00), (date(2026, 9, 25), 4.12)]
         level, reasons = I.tenor_signals(five_big)
-        self.assertEqual(level, "关注")
+        self.assertEqual(level, "略转鹰")
         self.assertTrue(any("超过 0.1%" in r for r in reasons))
 
     def test_anchor_without_probability(self):
@@ -537,12 +558,10 @@ class EffrSignalTest(unittest.TestCase):
         self.assertEqual(I.cross_signal(meet, year_up), ("", []))
         year_down = [(date(2026, 9, 28), 4.20), (date(2026, 9, 29), 4.12)]
         level, reasons = I.cross_signal(meet, year_down)
-        self.assertEqual(level, "关注")
-        self.assertIn("方向相反", reasons[0])
+        self.assertEqual((level, reasons), ("背离", ["背离（短期转鹰，长期转鸽）"]))
         year_flat = [(date(2026, 9, 28), 4.20), (date(2026, 9, 29), 4.205)]
         level, reasons = I.cross_signal(meet, year_flat)
-        self.assertEqual(level, "关注")
-        self.assertIn("年底几乎不动", reasons[0])
+        self.assertEqual((level, reasons), ("背离", ["背离（短期转鹰，长期几乎不动）"]))
 
 
 class EffrExpectTest(unittest.TestCase):
