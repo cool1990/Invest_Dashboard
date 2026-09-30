@@ -196,6 +196,34 @@ class ConsensusTest(unittest.TestCase):
         self.assertEqual([r["title"] for r in dash["releases"]["upcoming"]], ["ISM 服务业 PMI"])
         self.assertEqual(rec["Non-Farm Employment Change"]["surprise_text"], "+30")
 
+    def test_jolts_reading(self):
+        from datetime import datetime, timezone
+        raw = {
+            "JTSJOL": [(date(2026, 3, 1), 6887.0), (date(2026, 7, 1), 7335.0), (date(2026, 8, 1), 7079.0)],
+            "JTSQUR": [(date(2026, 7, 1), 1.9), (date(2026, 8, 1), 1.9)],
+            "UNEMPLOY": [(date(2026, 7, 1), 6916.0), (date(2026, 8, 1), 7031.0)],
+        }
+        events = [{"release_at": "2026-09-29T10:00:00-04:00", "title": "JOLTS Job Openings",
+                   "impact": "Medium", "forecast": "7.23M", "previous": "7.27M"}]
+        now = datetime(2026, 9, 30, 1, 0, tzinfo=timezone.utc)
+        dash = build_dashboard(raw, [], date(2026, 9, 30), events, [], now)
+        row = {r["title_en"]: r for r in dash["releases"]["recent"]}["JOLTS Job Openings"]
+        self.assertEqual(row["bj_date"], "2026-09-29")
+        self.assertEqual(row["ref"], "2026-08")
+        self.assertEqual(row["verdict"], "不及预期")
+        self.assertEqual(row["level_text"], "7.079 百万个")
+        self.assertEqual(row["actual_text"], "7.079M")
+        self.assertEqual(row["surprise_text"], "-0.151M")
+        self.assertIn("少 25.6 万个", row["move"])
+        self.assertIn("少 15.1 万个", row["move"])
+        self.assertIn("7.335 百万个", row["move"])
+        self.assertIn("2026 年 3 月", row["move"])
+        self.assertIn("空缺/失业从 1.06 降到 1.01", row["meaning"])
+        self.assertIn("离职率仍为 1.9%", row["meaning"])
+        self.assertIn("不进本站标签", row["meaning"])
+        self.assertIn("判断没有变化", row["meaning"])
+        self.assertFalse(row["impact"]["changed"])
+
     def test_upcoming_and_nowcast(self):
         from datetime import datetime, timezone
         raw = {"PCEPILFE": [(d, 100 + i * 0.25) for i, d in enumerate(months(date(2024, 1, 1), 31))]}

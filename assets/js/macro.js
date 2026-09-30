@@ -20,7 +20,7 @@ function renderRecent() {
   document.getElementById("recent-wrap").hidden = false;
   const rows = recent.map((x) => `<tr>
       <td>${esc(x.bj)}</td><td style="text-align:left">${esc(x.title)}<div class="small muted">${esc(x.ref || "")}</div></td>
-      <td><b>${esc(x.actual_text ?? "—")}</b></td><td>${esc(x.forecast_text || "—")}</td>
+      <td><b>${esc(x.level_text || x.actual_text || "—")}</b></td><td>${esc(x.forecast_text || "—")}</td>
       <td>${x.verdict ? `${x.dir === "pos" ? "↑" : x.dir === "neg" ? "↓" : "="} ${esc(x.verdict)}<div class="small muted">${esc(x.surprise_text)}</div>` : `<span class="muted">${esc(x.status || "无预期")}</span>`}</td>
       <td>${esc(x.previous_text || "—")}</td>
       <td style="text-align:left" class="small">${x.impact ? (x.impact.changed ? "<b>" + esc(x.impact.text) + "</b>" : esc(x.impact.text)) : '<span class="muted">—</span>'}</td>

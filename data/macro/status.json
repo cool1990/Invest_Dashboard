@@ -1,5 +1,5 @@
 {
- "updated_at": "2026-09-29T02:17:49Z",
+ "updated_at": "2026-09-30T00:45:54Z",
  "series": {
   "A007RY2Q224SBEA": {
    "ok": true,
@@ -524,9 +524,9 @@
   "JTSJOL": {
    "ok": true,
    "first_obs": "2000-12-01",
-   "last_obs": "2026-07-01",
-   "fetched_at": "2026-09-29T02:17:41Z",
-   "last_ok_at": "2026-09-29T02:17:41Z",
+   "last_obs": "2026-08-01",
+   "fetched_at": "2026-09-30T00:45:07Z",
+   "last_ok_at": "2026-09-30T00:45:07Z",
    "name": "职位空缺数（JOLTS）",
    "unit": "千个",
    "freq": "月"
@@ -534,9 +534,9 @@
   "JTSQUR": {
    "ok": true,
    "first_obs": "2000-12-01",
-   "last_obs": "2026-07-01",
-   "fetched_at": "2026-09-29T02:17:41Z",
-   "last_ok_at": "2026-09-29T02:17:41Z",
+   "last_obs": "2026-08-01",
+   "fetched_at": "2026-09-30T00:45:07Z",
+   "last_ok_at": "2026-09-30T00:45:07Z",
    "name": "离职率（JOLTS）",
    "unit": "%",
    "freq": "月"

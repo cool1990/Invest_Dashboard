@@ -7,7 +7,7 @@
 - 依据：dimensions 的 metrics（决定标签的几个数：最新值、较上期、对照的锚点），
   sections + charts（这几个数对应的图，core=True 的默认展开，其余折叠），
   通胀一块另附克利夫兰联储 Nowcast 与实际的对照（releases.nowcast）。
-- 时间：releases 的即将发布（附情景门槛）与最近发布（实际 vs 预期）。
+- 时间：releases 的即将发布（附情景门槛）、最近发布（实际 vs 预期），以及每条已公布数据的变动和会不会改判断。
 
 缺数据的序列会被跳过；某张图一条序列都没有，就不输出这张图。
 """
@@ -675,6 +675,112 @@ class MacroBuilder:
             return f"{ref.year}-{ref.month:02d}"
         return f"截至 {ref.isoformat()} 当周"
 
+    def _prev_obs(self, key: str, ref: date) -> tuple[date, float] | None:
+        prev = [(d, v) for d, v in (self.actuals.get(key) or []) if d < ref]
+        return prev[-1] if prev else None
+
+    @staticmethod
+    def _wan_ge(thousands: float) -> str:
+        """千个换成万个：256 → 25.6 万个。"""
+        return f"{abs(thousands) / 10:.1f} 万个"
+
+    def _regime_line(self, in_rules: bool) -> str:
+        """这条数据落下来之后，增长标签和整体环境还在不在原处。in_rules 表示它进了试算。"""
+        g = self.states.get("growth") or {}
+        env = I.environment(g, self.states.get("inflation") or {}, self.states.get("policy") or {},
+                            self.states.get("liquidity") or {}, self.states.get("fiscal"))
+        frozen = f"增长仍为「{g.get('label') or '—'}」，整体环境仍为「{env.get('name') or '—'}」"
+        if in_rules:
+            return f"没有改变判断：{frozen}"
+        return f"这条不进本站标签，{frozen}，判断没有变化"
+
+    def _jolts_note(self, ref: date, actual: float, forecast: float | None, forecast_text: str,
+                    previous_text: str) -> tuple[str, str, str]:
+        """职位空缺：写出修订、较上月、较预期，以及空缺/失业和离职率。它不进增长标签。"""
+        prev = self._prev_obs("jolts", ref)
+        bits = [f"{ref.year} 年 {ref.month} 月 {actual / 1000:.3f} 百万个"]
+        if prev:
+            delta = actual - prev[1]
+            way = "少" if delta < 0 else "多" if delta > 0 else "持平于"
+            bits.append("比修订后的上月持平" if delta == 0 else f"比修订后的上月{way} {self._wan_ge(delta)}")
+        if forecast is not None:
+            gap = actual - forecast
+            if gap == 0:
+                bits.append(f"符合预期 {forecast_text or ''}".strip())
+            else:
+                bits.append(f"{'低于' if gap < 0 else '高于'}预期 {forecast_text}（{'少' if gap < 0 else '多'} {self._wan_ge(gap)}）")
+        lower = [d for d, v in (self.actuals.get("jolts") or []) if d < ref and v < actual]
+        if lower:
+            last = lower[-1]
+            months = (ref.year - last.year) * 12 + (ref.month - last.month)
+            if 0 < months <= 24:
+                bits.append(f"要回到 {last.year} 年 {last.month} 月才有更低的读数")
+        published = cons.parse_value(previous_text)
+        if prev and published is not None and abs(prev[1] - published) >= 50:
+            bits.append(f"日历前值 {previous_text} 是修订前的上月，修订后为 {prev[1] / 1000:.3f} 百万个")
+        move = "，".join(bits) + "。"
+
+        unemp = dict(self.m("UNEMPLOY", "last"))
+        ratio = actual / unemp[ref] if unemp.get(ref) else None
+        ratio_prev = prev[1] / unemp[prev[0]] if prev and unemp.get(prev[0]) else None
+        parts = []
+        if ratio is not None:
+            if ratio > 1.02:
+                side = "职位仍多于求职者"
+            elif ratio > 1:
+                side = "职位仍略多于求职者"
+            elif ratio < 0.98:
+                side = "求职者已经多于职位"
+            else:
+                side = "职位和求职者大致相当"
+            if ratio_prev is None or abs(ratio - ratio_prev) < 0.005:
+                parts.append(f"空缺/失业 {ratio:.2f}，{side}")
+            else:
+                verb = "降到" if ratio < ratio_prev else "升到"
+                parts.append(f"空缺/失业从 {ratio_prev:.2f} {verb} {ratio:.2f}，{side}")
+        quits = dict(self.m("JTSQUR", "last"))
+        q, q_prev = quits.get(ref), quits.get(prev[0]) if prev else None
+        if q is not None:
+            if q_prev is None or abs(q - q_prev) < 0.05:
+                parts.append(f"离职率仍为 {q:.1f}%")
+            else:
+                parts.append(f"离职率从 {q_prev:.1f}% 到 {q:.1f}%")
+        parts.append(self._regime_line(False))
+        labor = (self.states.get("growth") or {}).get("labor")
+        if prev and labor and labor != "数据不足":
+            down = actual < prev[1]
+            cooling = labor in ("降温", "疲弱", "恶化")
+            if (down and cooling) or ((not down) and labor == "强"):
+                parts.append(f"变动方向和现在的「就业{labor}」一致，用来确认，不单独改标签")
+            else:
+                parts.append(f"变动方向和现在的「就业{labor}」不完全同向，但仍不单独改标签")
+        return f"{actual / 1000:.3f} 百万个", move, "。".join(parts) + "。"
+
+    def release_note(self, spec: cons.EventSpec, ref: date, actual: float | None, forecast: float | None,
+                     forecast_text: str, previous_text: str, impact: dict | None,
+                     verdict: str | None) -> dict:
+        """给「昨日发布」用：变动一句，意义一句（标签变了没有）。"""
+        if actual is None:
+            return {"move": "实际值还没进 FRED。", "meaning": "数据未到，先不改判断。"}
+        if spec.key == "jolts":
+            level, move, meaning = self._jolts_note(ref, actual, forecast, forecast_text, previous_text)
+            return {"level_text": level, "move": move, "meaning": meaning}
+        bits = []
+        prev = self._prev_obs(spec.key, ref)
+        if prev:
+            delta = actual - prev[1]
+            if delta == 0:
+                bits.append("与上期相同")
+            else:
+                bits.append(f"较上期 {'+' if delta > 0 else '−'}{abs(delta):,.2f} {spec.unit}")
+        if verdict:
+            bits.append(verdict)
+        if impact and impact.get("changed"):
+            meaning = impact["text"] + "。判断因此变化。"
+        else:
+            meaning = self._regime_line(impact is not None)
+        return {"move": "，".join(bits) + ("。" if bits else ""), "meaning": meaning}
+
     def judge(self, spec: cons.EventSpec, actual: float, forecast: float, decimals: int) -> tuple[float, str, str]:
         """返回 (意外, 文字, 方向 pos/neg/flat)。pos 表示对经济偏强或通胀偏热。"""
         a = round(actual, decimals)
@@ -727,6 +833,7 @@ class MacroBuilder:
             row["unit"] = spec.unit
             actual = self._find(spec.key, ref)
             forecast = cons.parse_value(f_text)
+            verdict = None
             if actual is None:
                 row["status"] = "等待 FRED 更新"
             else:
@@ -734,11 +841,20 @@ class MacroBuilder:
                 row["actual_text"] = f"{round(actual, dec):,.{dec}f}"
                 if forecast is not None:
                     diff, verdict, direction = self.judge(spec, actual, forecast, dec)
-                    row.update({"surprise": diff, "surprise_text": f"{diff:+,.{dec}f}", "verdict": verdict,
+                    surprise_text = f"{diff:+,.{dec}f}"
+                    if spec.key == "jolts":
+                        surprise_text = f"{diff / 1000:+.3f}M"
+                    row.update({"surprise": diff, "surprise_text": surprise_text, "verdict": verdict,
                                 "dir": direction})
+                if spec.key == "jolts":
+                    row["actual_text"] = f"{actual / 1000:.3f}M"
                 imp = self.scen.impact(spec.key, ref, actual)
+                if imp is None and spec.key == "jolts":
+                    imp = {"changed": False, "text": "没有改变判断"}
                 if imp:
                     row["impact"] = imp
+            judged = row.get("impact") if isinstance(row.get("impact"), dict) else None
+            row.update(self.release_note(spec, ref, actual, forecast, f_text, p_text, judged, verdict))
             row["market"] = self.market_reaction(at.date())
             recent.append(row)
         recent.sort(key=lambda r: r["release_at"], reverse=True)
