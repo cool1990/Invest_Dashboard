@@ -1,9 +1,9 @@
-"""市场隐含 EFFR（下月 / 年底 / 明年底）。
+"""市场隐含 EFFR（下次会议 / 年底 / 明年底）。
 
 这几项来自每天早晨的笔记，已经由 cool1990/invest-dashboard_v1 整理进
 data/sentiment/series.csv。这里读那份公开文件，只挑出 EFFR 这几行，
 按 (date, series_id) 合并进本仓库的 data/macro/effr_expectations.csv。
-下次会议（effr_meet）旧笔记里还没有时，页面用下月（effr_next）顶上，更早的对比也用下月。
+笔记里下次会议的 series_id 仍叫 effr_next，页面上写成下次会议。
 读取失败时保留本地已有记录。
 """
 
@@ -15,7 +15,7 @@ import urllib.request
 from pathlib import Path
 
 SOURCE_URL = "https://raw.githubusercontent.com/cool1990/invest-dashboard_v1/main/data/sentiment/series.csv"
-KEYS = ("effr_next", "effr_meet", "effr_year", "effr_ny")
+KEYS = ("effr_next", "effr_year", "effr_ny")
 FIELDS = ["date", "series_id", "value", "obs_date", "remark"]
 
 

@@ -185,7 +185,7 @@
 
 - 来源：圣路易斯联储 [FRED](https://fred.stlouisfed.org/) 的公开 CSV，不需要 API key。序列清单在 `pipeline/macro/indicators.py`。
 - 全历史下载，原样存在 `data/raw/fred/<ID>.csv`（列 `date,value`，数值和单位与 FRED 一致）。图表默认显示近 5 年，可切 2 年 / 10 年 / 全部（图表数据从 1990 年起，日频压成周频）。
-- 市场隐含 EFFR（下次会议 / 年底 / 明年底）来自每天早晨的笔记。旧站已把它整理进 `data/sentiment/series.csv`，本仓库从那份公开文件里挑出这几行，累积到 `data/macro/effr_expectations.csv`。下次会议（`effr_meet`）还没有单独记录时用下月，更早的对比也用下月。对照写隐含加息或降息次数和最大概率区间；当日变动达到 5bp 提示关注、大于 10bp 提示重要，5 日累计超过 5bp 或 0.1% 提示关注。下次会议与年底当日变动方向相反，或一个超过 5bp、另一个几乎不动（不足 1bp），也提示关注。
+- 市场隐含 EFFR（下次会议 / 年底 / 明年底）来自每天早晨的笔记。旧站已把它整理进 `data/sentiment/series.csv`，本仓库从那份公开文件里挑出这几行，累积到 `data/macro/effr_expectations.csv`。笔记里下次会议的 id 仍是 `effr_next`，页面写成下次会议。对照写隐含加息或降息次数和最大概率区间；当日变动达到 5bp 提示关注、大于 10bp 提示重要，5 日累计超过 5bp 或 0.1% 提示关注。下次会议与年底当日变动方向相反，或一个超过 5bp、另一个几乎不动（不足 1bp），也提示关注。
 - `data/macro/dashboard.json`：页面读的唯一文件。
 - `data/macro/status.json`：每条序列这次有没有下载成功、最新观测日期。下载失败的序列沿用上次的文件，页面底部「数据状态」会列出来。
 
