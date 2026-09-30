@@ -554,22 +554,49 @@ class MacroBuilder:
                 latest[key] = row
         return latest
 
-    def path_values(self) -> dict:
+    def _expect_pts(self, key: str) -> list[tuple[date, float]]:
+        by: dict[date, float] = {}
+        for r in self.effr_expect:
+            if r.get("series_id") != key:
+                continue
+            try:
+                by[date.fromisoformat(r["date"])] = float(r["value"])
+            except (TypeError, ValueError):
+                continue
+        return sorted(by.items())
+
+    def _expect_remark(self, key: str) -> str:
+        rows = [r for r in self.effr_expect if r.get("series_id") == key and r.get("remark")]
+        if not rows:
+            return ""
+        return max(rows, key=lambda r: r["date"]).get("remark") or ""
+
+    def meeting_series(self) -> tuple[list[tuple[date, float]], str]:
+        """下次会议。还没有单独记录时整段用下月；有了之后，更早的对比仍用下月。"""
+        meet, nxt = self._expect_pts("effr_meet"), self._expect_pts("effr_next")
+        if not meet:
+            return nxt, "尚无单独的下次会议记录，暂用下月"
+        hist = [(d, v) for d, v in nxt if d < meet[0][0]]
+        return hist + meet, "更早的对比用下月" if hist else ""
+
+    def path_values(self, next_meet: float | None = None) -> dict:
         effr = self.s("EFFR")
         latest = self.latest_expect()
         get = lambda k: float(latest[k]["value"]) if k in latest else None  # noqa: E731
         ref_year = int(max(r["date"] for r in latest.values())[:4]) if latest else self.asof.year
         dmap = {d.year: v for d, v in self.s("FEDTARMD")}
         lr = self.s("FEDTARMDLR")
-        return {"current": effr[-1][1] if effr else None, "next_month": get("effr_next"),
+        if next_meet is None:
+            next_meet = get("effr_meet") if "effr_meet" in latest else get("effr_next")
+        return {"current": effr[-1][1] if effr else None, "next_meet": next_meet,
                 "year_end": get("effr_year"), "next_year": get("effr_ny"),
                 "dot_year": dmap.get(ref_year), "dot_next": dmap.get(ref_year + 1),
                 "dot_long": lr[-1][1] if lr else None,
                 "asof": max((r["date"] for r in latest.values()), default="")}
 
     def path_chart(self, pv: dict) -> Chart | None:
-        cats = ["当前", "下月", "年底", "明年底", "长期"]
-        market = [pv["current"], pv["next_month"], pv["year_end"], pv["next_year"], None]
+        cats = ["当前", "下次会议", "年底", "明年底", "长期"]
+        market = [pv["current"], pv["next_meet"], pv["year_end"], pv["next_year"], None]
         dots = [pv["current"] if pv["dot_year"] is not None else None, None,
                 pv["dot_year"], pv["dot_next"], pv["dot_long"]]
         lines = []
@@ -597,19 +624,14 @@ class MacroBuilder:
         dgs10 = self.w("DGS10")
         real10 = self.w("DFII10")
 
-        exp_lines = []
-        names = {"effr_next": "下月 EFFR", "effr_year": "年底 EFFR", "effr_ny": "明年底 EFFR"}
-        for key, nm in names.items():
-            pts = []
-            for r in self.effr_expect:
-                if r["series_id"] == key:
-                    try:
-                        pts.append((date.fromisoformat(r["date"]), float(r["value"])))
-                    except ValueError:
-                        continue
-            exp_lines.append(Line(nm, ts.clean(pts)))
-
-        pv = self.path_values()
+        meet_s, meet_note = self.meeting_series()
+        year_s, ny_s = self._expect_pts("effr_year"), self._expect_pts("effr_ny")
+        exp_lines = [
+            Line("下次会议", meet_s),
+            Line("年底 EFFR", year_s),
+            Line("明年底 EFFR", ny_s),
+        ]
+        pv = self.path_values(meet_s[-1][1] if meet_s else None)
         path = self.path_chart(pv)
         groups = [
             ("政策利率", self.add(
@@ -636,10 +658,21 @@ class MacroBuilder:
         metrics = [
             Metric("real_policy", "实际政策利率", real_policy, "%", "{:.2f}", chart="real_policy",
                    note="EFFR − 核心 PCE 同比"),
-            Metric("year_end", "市场隐含年底 EFFR", exp_lines[1].data, "%", "{:.2f}", "O", "effr_path"),
-            Metric("next_year", "市场隐含明年底 EFFR", exp_lines[2].data, "%", "{:.2f}", "O", "effr_path"),
+            Metric("meeting", "市场隐含下次会议 EFFR", exp_lines[0].data, "%", "{:.3f}", "O", "effr_path",
+                   note=meet_note),
+            Metric("year_end", "市场隐含年底 EFFR", exp_lines[1].data, "%", "{:.3f}", "O", "effr_path"),
+            Metric("next_year", "市场隐含明年底 EFFR", exp_lines[2].data, "%", "{:.3f}", "O", "effr_path"),
         ]
         state = I.policy_state({**pv, "real_policy": real_policy[-1][1] if real_policy else None})
+        meet_lvl, meet_why = I.tenor_signals(meet_s)
+        year_lvl, year_why = I.tenor_signals(year_s)
+        ny_lvl, ny_why = I.tenor_signals(ny_s)
+        cross_lvl, cross_why = I.cross_signal(meet_s, year_s)
+        meet_remark = self._expect_remark("effr_meet") or self._expect_remark("effr_next")
+        state["anchors"]["meeting"] = I.implied_anchor(meet_remark, I.stronger(meet_lvl, cross_lvl), meet_why + cross_why)
+        state["anchors"]["year_end"] = I.implied_anchor(
+            self._expect_remark("effr_year"), I.stronger(year_lvl, cross_lvl), year_why + cross_why)
+        state["anchors"]["next_year"] = I.implied_anchor(self._expect_remark("effr_ny"), ny_lvl, ny_why)
         return groups, metrics, state
 
     # =====================================================================
