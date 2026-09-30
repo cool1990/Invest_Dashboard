@@ -216,6 +216,10 @@ details.why p { margin: 4px 0 0; line-height: 1.55; color: var(--ink-2); }
 .read-chg { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; color: var(--muted); font-size: 12px; }
 .read-chg .small { display: inline; }
 .read-why { grid-column: 1 / -1; margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
+.up-list li.yd { display: block; }
+.yd-head { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 2px 8px; align-items: start; }
+.yd-head .up-title small { display: block; margin: 1px 0 0; }
+.up-list .read-why b { font-weight: 600; margin-right: 4px; }
 .rule { margin-top: 12px; }
 
 /* ---- 其他层 ---- */

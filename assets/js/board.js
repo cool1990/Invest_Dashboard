@@ -104,9 +104,10 @@ function metricsHTML(d) {
 }
 
 // ---- 第三层：时间 ----
-// 今日发布 + 即将发布：放在第一屏右边，按访问时的北京日期分开；每条带重要程度，理由折叠
+// 昨日发布 + 今日发布 + 即将发布：放在第一屏右边，按访问时的北京日期分开；每条带重要程度，理由折叠
 const WEEK = ["日", "一", "二", "三", "四", "五", "六"];
-const bjToday = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
+const bjDay = (offset = 0) => new Date(Date.now() + 8 * 3600e3 + offset * 86400e3).toISOString().slice(0, 10);
+const bjToday = () => bjDay(0);
 const stars = (n) => `<span class="stars" aria-label="重要程度 ${n} 星">${"★".repeat(n)}<i>${"☆".repeat(5 - n)}</i></span>`;
 
 function calRowHTML(x) {
@@ -123,9 +124,35 @@ function calRowHTML(x) {
   </li>`;
 }
 
+function ydayRowHTML(x) {
+  const [, hm] = (x.bj || "").split(" ");
+  const imp = x.importance;
+  const actual = x.level_text || x.actual_text || "—";
+  const bits = [x.forecast_text ? `预期 ${x.forecast_text}` : "", x.previous_text ? `前值 ${x.previous_text}` : ""].filter(Boolean);
+  const move = x.move ? `<p class="read-why"><b>变动</b>${esc(x.move)}</p>` : "";
+  const meaning = x.meaning ? `<p class="read-why"><b>意义</b>${esc(x.meaning)}</p>` : (x.status ? `<p class="read-why">${esc(x.status)}</p>` : "");
+  return `<li class="yd ${imp && imp.stars >= 4 ? "hi" : ""}">
+    <div class="yd-head">
+      <span class="up-time">${esc(hm || "")}</span>
+      <span class="up-title">${esc(x.title)}${imp ? stars(imp.stars) : ""}${x.ref ? `<small>${esc(x.ref)}</small>` : ""}</span>
+      <span class="up-num"><b>${esc(actual)}</b>${bits.length ? `<small>${esc(bits.join(" · "))}</small>` : ""}</span>
+    </div>
+    ${move}${meaning}
+  </li>`;
+}
+
+function renderYesterday() {
+  const el = document.getElementById("yesterday");
+  if (!el) return;
+  const recent = (DATA.releases || {}).recent || [];
+  const rows = recent.filter((x) => x.bj_date === bjDay(-1));
+  el.innerHTML = rows.length ? `<ul class="up-list">${rows.map(ydayRowHTML).join("")}</ul>` : `<p class="small muted">无</p>`;
+}
+
 function renderUpcoming() {
   const r = DATA.releases || { upcoming: [] };
   const st = DATA.status || {};
+  renderYesterday();
   const today = bjToday();
   const rows = r.upcoming.filter((x) => x.bj_date >= today);
   const todays = rows.filter((x) => x.bj_date === today);
