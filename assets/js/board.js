@@ -101,6 +101,11 @@ const STATUSES = [
   { key: "dove2", label: "明显转鸽" },
   { key: "bad1", label: "略转差" },
   { key: "bad2", label: "明显转差" },
+  { key: "tight2", label: "大幅收窄" },
+  { key: "tight1", label: "明显收窄" },
+  { key: "calm", label: "平稳" },
+  { key: "wide1", label: "明显走阔" },
+  { key: "wide2", label: "大幅走阔" },
 ];
 let statusKey = "all";
 

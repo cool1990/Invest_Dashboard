@@ -504,6 +504,25 @@ class DashboardTest(unittest.TestCase):
         self.assertNotIn("转鸽", m["next_year"]["anchor"])
 
 
+class CreditSpreadTest(unittest.TestCase):
+    def test_levels(self):
+        self.assertEqual([I.credit_level("hy", x) for x in (2.9, 3, 4.5, 6, 8)],
+                         ["乐观", "正常", "紧张", "压力", "危机"])
+        self.assertEqual([I.credit_level("ig", x) for x in (0.8, 0.9, 1.3, 1.8, 2.5)],
+                         ["乐观", "正常", "紧张", "压力", "危机"])
+
+    def test_change(self):
+        self.assertEqual(I.change_status("hy", 0.24)["label"], "平稳")
+        self.assertEqual(I.change_status("hy", 0.25)["label"], "明显走阔")
+        self.assertEqual(I.change_status("hy", -0.50)["label"], "明显收窄")
+        self.assertEqual(I.change_status("hy", 0.51)["label"], "大幅走阔")
+        self.assertEqual(I.change_status("ig", 0.04)["label"], "平稳")
+        self.assertEqual(I.change_status("ig", -0.05)["label"], "明显收窄")
+        self.assertEqual(I.change_status("ig", 0.10)["label"], "明显走阔")
+        self.assertEqual(I.change_status("ig", 0.11)["label"], "大幅走阔")
+        self.assertIn("当前为正常", I.credit_anchor("hy", 3.02))
+
+
 class ChangeStatusTest(unittest.TestCase):
     def test_degree_and_direction(self):
         self.assertEqual(I.change_status("meeting", -0.058)["label"], "略转鸽")

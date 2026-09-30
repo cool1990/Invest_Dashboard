@@ -51,6 +51,12 @@
    "unit": "百分点（年化）",
    "freq": "季"
   },
+  "BAMLC0A0CM": {
+   "name": "投资级公司债期权调整利差",
+   "unit": "%",
+   "freq": "日",
+   "last_obs": "2026-09-28"
+  },
   "BAMLH0A0HYM2": {
    "ok": true,
    "first_obs": "2023-09-30",
