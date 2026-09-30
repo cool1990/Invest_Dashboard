@@ -617,6 +617,39 @@ def level_status(metric_id: str, value: float | None, extra: dict | None = None)
     return None
 
 
+# 信号等级：不按每个指标单独配首页规则，只看变动强度 + 状态档位。
+# 0 无 / 1 留意 / 2 重要。页面筛「留意」= 1 和 2，「重要」= 只 2。
+_MOVE_GRADE = {
+    "good2": 2, "bad2": 2, "hawk2": 2, "dove2": 2, "wide2": 2, "tight2": 2,
+    "good1": 1, "bad1": 1, "hawk1": 1, "dove1": 1, "wide1": 1, "tight1": 1,
+    "flat": 0, "calm": 0,
+}
+_ADVERSE_MOVE = frozenset({"bad1", "bad2", "hawk1", "hawk2", "wide1", "wide2"})
+_STATUS_GRADE = {
+    "crisis": 2, "stress": 2, "alert": 2, "hot2": 2, "sticky": 2, "worse": 2,
+    "stall": 2, "high": 2, "restrictive": 2, "up2": 2, "upshift": 2, "high2": 2,
+    "tight": 1, "watch": 1, "hot1": 1, "elevated": 1, "up1": 1, "hike": 1,
+    "high1": 1, "weak": 1, "below": 1, "accel": 1, "contract": 1,
+}
+_SIGNAL = {0: ("none", "无"), 1: ("watch", "留意"), 2: ("alert", "重要")}
+
+
+def metric_signal(move: dict | None, status: dict | None) -> dict:
+    """把变动 + 状态压成统一信号档，方便筛选。
+
+    - 变动到「明显 / 大幅」→ 重要；「略 / 明显走阔或收窄」→ 留意
+    - 状态到告警带（危机、明显高于目标、粘性强…）→ 重要；略偏（接近下限、偏紧…）→ 留意
+    - 状态已偏紧且变动继续朝差（转差 / 转鹰 / 走阔）→ 升为重要
+    """
+    mk = (move or {}).get("key")
+    sk = (status or {}).get("key")
+    g = max(_MOVE_GRADE.get(mk, 0), _STATUS_GRADE.get(sk, 0))
+    if _STATUS_GRADE.get(sk, 0) >= 1 and mk in _ADVERSE_MOVE:
+        g = 2
+    key, label = _SIGNAL[g]
+    return {"key": key, "label": label, "grade": g}
+
+
 def policy_state(v: dict) -> dict:
     real, cur, ye, ny, dot_ny = (v.get(k) for k in ("real_policy", "current", "year_end", "next_year", "dot_next"))
     stance = None if real is None else "宽松" if real < 0 else "接近中性" if real < 1 else "偏紧" if real < 2 else "紧缩"

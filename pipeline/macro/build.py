@@ -942,6 +942,11 @@ class MacroBuilder:
         st = I.level_status(m.id, value, extras)
         if st:
             js["status"] = st
+        # 预测 / 参考不进信号筛选，避免首页被模型数刷屏
+        if m.model or m.ref:
+            js["signal"] = {"key": "none", "label": "无", "grade": 0}
+        else:
+            js["signal"] = I.metric_signal(move, st)
         return js
 
     def _metric_extras(self, key: str) -> dict:
