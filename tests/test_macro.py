@@ -478,14 +478,13 @@ class DashboardTest(unittest.TestCase):
         self.assertEqual(market["data"], [3.88, 4.046, 4.24, 4.762, None])
         self.assertEqual(dots["data"], [3.88, None, 3.9, 3.6, 3.0])
 
-    def test_meeting_uses_next_month_history_and_anchor(self):
-        # 下次会议从 9-29 才有单独记录，前一天的对比用下月
+    def test_meeting_anchor(self):
         raw = {"EFFR": [(date(2026, 9, 28), 3.88)]}
         remark_next = "最大概率区间3.75 - 4.00(52.9%)；**隐含加息0.5次**"
         remark_year = "最大概率区间4.00 - 4.25(51.9%)；**隐含加息1.3次**"
         exp = [
             {"date": "2026-09-28", "series_id": "effr_next", "value": "4.061", "remark": ""},
-            {"date": "2026-09-29", "series_id": "effr_meet", "value": "3.998", "remark": remark_next},
+            {"date": "2026-09-29", "series_id": "effr_next", "value": "3.998", "remark": remark_next},
             {"date": "2026-09-28", "series_id": "effr_year", "value": "4.263", "remark": ""},
             {"date": "2026-09-29", "series_id": "effr_year", "value": "4.204", "remark": remark_year},
             {"date": "2026-09-29", "series_id": "effr_ny", "value": "4.783", "remark":
@@ -493,7 +492,7 @@ class DashboardTest(unittest.TestCase):
         ]
         m = {x["id"]: x for x in build_dashboard(raw, exp, date(2026, 9, 29))["dimensions"][4]["metrics"]}
         self.assertEqual(m["meeting"]["text"], "3.998")
-        self.assertEqual(m["meeting"]["note"], "更早的对比用下月")
+        self.assertEqual(m["meeting"]["note"], "")
         self.assertEqual(m["meeting"]["chg"]["base"], "4.061")
         self.assertIn("隐含加息0.5次，最大概率区间 3.75 - 4.00（52.9%）", m["meeting"]["anchor"])
         self.assertIn("关注：当日下跌 6.3bp，达到 5bp", m["meeting"]["anchor"])
