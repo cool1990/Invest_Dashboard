@@ -90,7 +90,7 @@ function chgHTML(c) {
   return `<span>${arrow} ${esc(c.text)}</span><div class="small muted">${esc(c.label)} ${esc(c.base)}</div>`;
 }
 
-const STATUSES = [
+const MOVES = [
   { key: "all", label: "全部" },
   { key: "good2", label: "明显转好" },
   { key: "good1", label: "略转好" },
@@ -107,50 +107,58 @@ const STATUSES = [
   { key: "wide1", label: "明显走阔" },
   { key: "wide2", label: "大幅走阔" },
 ];
-let statusKey = "all";
+let moveKey = "all";
+
+function moveHTML(mv) {
+  if (!mv) return `<span class="muted">—</span>`;
+  return `<b class="mv mv-${esc(mv.key)}">${esc(mv.label)}</b>`;
+}
 
 function statusHTML(st) {
   if (!st) return `<span class="muted">—</span>`;
-  return `<b class="st st-${esc(st.key)}">${esc(st.label)}</b>`;
+  return `<b class="lv lv-${esc(st.key)}">${esc(st.label)}</b>`;
 }
 
 function metricsHTML(d) {
+  const hasMv = (d.metrics || []).some((m) => m.move);
   const hasSt = (d.metrics || []).some((m) => m.status);
+  const cols = `has-mv${hasSt ? " has-st" : ""}`;
   const rows = (d.metrics || []).map((m) => `
-    <div class="ev${hasSt ? " has-st" : ""}" ${m.status ? `data-st="${esc(m.status.key)}"` : ""}>
+    <div class="ev ${cols}" ${m.move ? `data-mv="${esc(m.move.key)}"` : ""}>
       <span class="ev-name">${m.chart ? `<a href="#c-${esc(m.chart)}">${esc(m.name)}</a>` : esc(m.name)}${m.model ? ' <span class="tag">预测</span>' : ""}${m.ref ? ' <span class="tag tag-ref">参考</span>' : ""}${m.note ? `<div class="small muted">${esc(m.note)}</div>` : ""}</span>
       <span class="ev-val"><i class="m-label">最新</i><b>${esc(m.text)}</b><small>${esc(m.unit)}</small><div class="small muted">${esc(m.date)}</div></span>
       <span class="ev-chg"><i class="m-label">较上期</i>${chgHTML(m.chg)}</span>
+      ${hasMv ? `<span class="ev-mv"><i class="m-label">变动</i>${moveHTML(m.move)}</span>` : ""}
       ${hasSt ? `<span class="ev-st"><i class="m-label">状态</i>${statusHTML(m.status)}</span>` : ""}
       <span class="ev-anchor"><i class="m-label">对照</i>${esc(m.anchor || "—")}</span>
       ${m.about ? `<p class="ev-about">${esc(m.about)}</p>` : ""}
     </div>`).join("");
   if (!rows) return "";
-  return `<div class="card evid"><div class="ev ev-head${hasSt ? " has-st" : ""}"><span>指标</span><span>最新</span><span>较上期</span>${hasSt ? "<span>状态</span>" : ""}<span>对照的锚点</span></div>${rows}</div>`;
+  return `<div class="card evid"><div class="ev ev-head ${cols}"><span>指标</span><span>最新</span><span>较上期</span>${hasMv ? "<span>变动</span>" : ""}${hasSt ? "<span>状态</span>" : ""}<span>对照</span></div>${rows}</div>`;
 }
 
-function applyStatusFilter() {
-  document.querySelectorAll(".ev[data-st]").forEach((el) => {
-    el.hidden = statusKey !== "all" && el.dataset.st !== statusKey;
+function applyMoveFilter() {
+  document.querySelectorAll(".ev[data-mv]").forEach((el) => {
+    el.hidden = moveKey !== "all" && el.dataset.mv !== moveKey;
   });
 }
 
 function renderStatusFilter() {
   const el = document.getElementById("st-filter");
   if (!el) return;
-  const any = (DATA.dimensions || []).some((d) => (d.metrics || []).some((m) => m.status));
+  const any = (DATA.dimensions || []).some((d) => (d.metrics || []).some((m) => m.move));
   if (!any) { el.hidden = true; return; }
   el.hidden = false;
-  el.innerHTML = STATUSES.map((s) =>
-    `<button type="button" data-st="${s.key}" aria-pressed="${s.key === statusKey}">${s.label}</button>`).join("");
+  el.innerHTML = MOVES.map((s) =>
+    `<button type="button" data-mv="${s.key}" aria-pressed="${s.key === moveKey}">${s.label}</button>`).join("");
   el.onclick = (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    statusKey = b.dataset.st;
-    el.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.st === statusKey)));
-    applyStatusFilter();
+    moveKey = b.dataset.mv;
+    el.querySelectorAll("button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.mv === moveKey)));
+    applyMoveFilter();
   };
-  applyStatusFilter();
+  applyMoveFilter();
 }
 
 // ---- 第三层：时间 ----

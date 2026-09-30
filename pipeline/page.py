@@ -123,7 +123,8 @@ def period_text(d: date, freq: str) -> str:
 
 
 def metric_json(m: Metric, anchors: dict[str, str], charts: dict) -> dict | None:
-    """第二层的一个数：最新值、较上期、对照的锚点。chart 只在那张图真的输出了时才链接。"""
+    """第二层的一个数：最新值、较上期、对照。chart 只在那张图真的输出了时才链接。
+    变动（较上期变化）和状态（当前水平）由各板块的 build 再补上。"""
     if not m.data:
         return None
     d, v = m.data[-1]

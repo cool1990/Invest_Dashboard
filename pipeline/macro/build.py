@@ -547,6 +547,10 @@ class MacroBuilder:
             "interest": interest_pct[-1][1] if interest_pct else None,
             "debt": debt[-1][1] if debt else None,
         })
+        self.inputs["fiscal"] = {
+            "deficit": deficit_pct[-1][1] if deficit_pct else None,
+            "deficit_chg12": deficit_chg[-1][1] if deficit_chg else None,
+        }
         return groups, metrics, state
 
     # =====================================================================
@@ -660,6 +664,7 @@ class MacroBuilder:
             Metric("next_year", "市场隐含明年底 EFFR", exp_lines[2].data, "%", "{:.3f}", "O", "effr_path"),
         ]
         state = I.policy_state({**pv, "real_policy": real_policy[-1][1] if real_policy else None})
+        self.inputs["policy"] = {"current": pv.get("current")}
         meet_lvl, meet_why = I.tenor_signals(meet_s)
         year_lvl, year_why = I.tenor_signals(year_s)
         ny_lvl, ny_why = I.tenor_signals(ny_s)
@@ -924,16 +929,38 @@ class MacroBuilder:
         return sorted(out)
 
     # =====================================================================
-    def metric_json(self, m: Metric, anchors: dict[str, str]) -> dict | None:
+    def metric_json(self, m: Metric, anchors: dict[str, str], extras: dict | None = None) -> dict | None:
         js = metric_json(m, anchors, self.charts)
         if not js:
             return None
         n, _ = FREQ[m.freq]
-        delta = m.data[-1][1] - m.data[-1 - n][1] if len(m.data) > n else None
-        st = I.change_status(m.id, delta)
+        value = m.data[-1][1]
+        delta = value - m.data[-1 - n][1] if len(m.data) > n else None
+        move = I.change_move(m.id, delta)
+        if move:
+            js["move"] = move
+        st = I.level_status(m.id, value, extras)
         if st:
             js["status"] = st
         return js
+
+    def _metric_extras(self, key: str) -> dict:
+        """状态列需要的额外上下文（跨指标对照）。"""
+        g = self.inputs.get("growth") or {}
+        i = self.inputs.get("inflation") or {}
+        f = self.inputs.get("fiscal") or {}
+        p = self.inputs.get("policy") or {}
+        out = {
+            "unrate_chg12": g.get("unrate_chg12"), "sahm": g.get("sahm"),
+            "core_yoy": i.get("core_yoy"), "deficit_chg12": f.get("deficit_chg12"),
+            "current": p.get("current"),
+        }
+        if key == "inflation" and i.get("nowcast"):
+            # nowcast 相对最新官方同比的差，给状态列用
+            yoy = i.get("core_yoy")
+            if yoy is not None:
+                out["nowcast_gap"] = i["nowcast"][-1][1] - yoy
+        return out
 
     def build(self) -> dict:
         dims = [("growth", "增长", self.growth), ("inflation", "通胀", self.inflation),
@@ -946,10 +973,11 @@ class MacroBuilder:
 
         out_dims, sections = [], []
         for key, name, groups, metrics, state in built:
+            extras = self._metric_extras(key)
             out_dims.append({
                 "key": key, "name": name, "label": state["label"], "why": state.get("why", []),
                 "head": state["head"],
-                "metrics": [x for x in (self.metric_json(m, state.get("anchors", {})) for m in metrics) if x],
+                "metrics": [x for x in (self.metric_json(m, state.get("anchors", {}), extras) for m in metrics) if x],
             })
             sections.append({"key": key, "name": name,
                              "groups": [{"name": g, "charts": ids} for g, ids in groups if ids]})
