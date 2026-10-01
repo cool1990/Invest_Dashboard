@@ -574,6 +574,25 @@ class LevelStatusTest(unittest.TestCase):
         self.assertEqual(I.level_status("nowcast", 3.49, {"nowcast_gap": 0.15})["label"], "略高")
 
 
+class MetricSignalTest(unittest.TestCase):
+    def test_grades(self):
+        none = {"key": "flat", "label": "持平"}
+        mild = {"key": "good1", "label": "略转好"}
+        big = {"key": "good2", "label": "明显转好"}
+        normal = {"key": "normal", "label": "正常"}
+        hot = {"key": "hot2", "label": "明显高于目标"}
+        tight = {"key": "tight", "label": "偏紧"}
+        wide = {"key": "wide1", "label": "明显走阔"}
+        self.assertEqual(I.metric_signal(none, normal)["key"], "none")
+        self.assertEqual(I.metric_signal(mild, normal)["key"], "watch")
+        self.assertEqual(I.metric_signal(big, normal)["label"], "重要")
+        self.assertEqual(I.metric_signal(none, hot)["key"], "alert")
+        self.assertEqual(I.metric_signal(none, tight)["key"], "watch")
+        # 状态已偏紧 + 变动继续走阔 → 升为重要
+        self.assertEqual(I.metric_signal(wide, tight)["key"], "alert")
+        self.assertEqual(I.metric_signal(wide, normal)["key"], "watch")
+
+
 class EffrSignalTest(unittest.TestCase):
     def test_daily_and_five_day_levels(self):
         flat = [(date(2026, 9, d), 4.20) for d in range(24, 30)]
