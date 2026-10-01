@@ -1,72 +1,6 @@
 {
- "generated_at": "2026-09-30T08:56:41+08:00",
+ "generated_at": "2026-10-01T08:57:56+08:00",
  "events": [
-  {
-   "date": "2026-09-30",
-   "time_bj": "",
-   "category": "财报",
-   "title": "美光（MU）财报",
-   "url": "https://www.nasdaq.com/market-activity/earnings",
-   "note": "美东盘后。原名：Micron Technology, Inc.。日期不一样：Nasdaq earnings calendar写的是 2026-09-30，盈利跟踪笔记写的是 2026-10-01",
-   "previous": "$2.86",
-   "consensus": "$31.35",
-   "priority": "高"
-  },
-  {
-   "date": "2026-09-30",
-   "time_bj": "00:40",
-   "category": "大事",
-   "title": "美联储讲话：经济展望",
-   "url": "https://youtube.com/live/ZcKwcEHku7w",
-   "note": "Speech - Governor Michael S. Barr At A Conversation with Michael S. Barr on the State of the Economy, Detroit, Mich. 美东 12:40 p.m.。原名：Economic Outlook",
-   "previous": "",
-   "consensus": "",
-   "priority": "低"
-  },
-  {
-   "date": "2026-09-30",
-   "time_bj": "03:00",
-   "category": "大事",
-   "title": "美联储讲话：支付",
-   "url": "https://vimeo.com/event/6186977/6099e85d01",
-   "note": "Speech - Governor Christopher J. Waller At the Sibos 2026 Conference, Miami Beach, Fla. 美东 3:00 p.m.。原名：Payments",
-   "previous": "",
-   "consensus": "",
-   "priority": "低"
-  },
-  {
-   "date": "2026-09-30",
-   "time_bj": "20:30",
-   "category": "宏观",
-   "title": "2026年8月个人收入与支出",
-   "url": "https://www.bea.gov/news/schedule",
-   "note": "美东 8:30 AM。原名：Personal Income and Outlays, August 2026",
-   "previous": "",
-   "consensus": "",
-   "priority": "高"
-  },
-  {
-   "date": "2026-09-30",
-   "time_bj": "20:30",
-   "category": "宏观",
-   "title": "2026年8月经济指标预览",
-   "url": "https://www.census.gov/econ/indicators/",
-   "note": "美东 8:30 AM August 2026。原名：Advance Economic Indicators Report (International Trade, Retail, & Wholesale)",
-   "previous": "",
-   "consensus": "",
-   "priority": "中"
-  },
-  {
-   "date": "2026-09-30",
-   "time_bj": "20:30",
-   "category": "宏观",
-   "title": "2026年二季度 GDP 第三次估计",
-   "url": "https://www.bea.gov/news/schedule",
-   "note": "美东 8:30 AM。原名：GDP (Third Estimate), Industries, Corporate Profits, State GDP, and State Personal Income, 2nd Quarter 2026; State PCE, 2025",
-   "previous": "",
-   "consensus": "",
-   "priority": "高"
-  },
   {
    "date": "2026-10-01",
    "time_bj": "",
@@ -91,14 +25,14 @@
   },
   {
    "date": "2026-10-01",
-   "time_bj": "03:25",
-   "category": "大事",
-   "title": "美联储讲话：农村经济",
-   "url": "https://www.federalreserve.gov/newsevents/2026-september.htm",
-   "note": "Speech - Governor Lisa D. Cook At the 2026 Investing in Rural America Conference, Asheville, N.C. 美东 3:25 p.m.。原名：Rural Economy",
+   "time_bj": "",
+   "category": "财报",
+   "title": "美光（MU）财报",
+   "url": "",
+   "note": "笔记 盈利跟踪_2026-09-30.md 的未来 7 天财报。原名：MICRON TECHNOLOGY INC",
    "previous": "",
    "consensus": "",
-   "priority": "低"
+   "priority": "高"
   },
   {
    "date": "2026-10-01",
@@ -161,7 +95,7 @@
    "category": "财报",
    "title": "耐克（NKE）财报",
    "url": "",
-   "note": "笔记 盈利跟踪_2026-09-29.md 的未来 7 天财报。原名：NIKE, Inc.",
+   "note": "笔记 盈利跟踪_2026-09-30.md 的未来 7 天财报。原名：NIKE, Inc.",
    "previous": "",
    "consensus": "",
    "priority": "高"
@@ -284,7 +218,7 @@
    "url": "https://www.nasdaq.com/market-activity/earnings",
    "note": "美东盘前。原名：Pepsico, Inc.",
    "previous": "$2.29",
-   "consensus": "$2.30",
+   "consensus": "$2.29",
    "priority": "中"
   },
   {
@@ -383,7 +317,7 @@
    "url": "https://www.nasdaq.com/market-activity/earnings",
    "note": "美东盘前",
    "previous": "$5.07",
-   "consensus": "$5.84",
+   "consensus": "$5.88",
    "priority": "中"
   },
   {
@@ -394,7 +328,7 @@
    "url": "https://www.nasdaq.com/market-activity/earnings",
    "note": "美东盘前",
    "previous": "$2.80",
-   "consensus": "$2.96",
+   "consensus": "$2.90",
    "priority": "中"
   },
   {
@@ -449,7 +383,7 @@
    "url": "https://www.nasdaq.com/market-activity/earnings",
    "note": "美东盘前",
    "previous": "$1.06",
-   "consensus": "$1.17",
+   "consensus": "$1.16",
    "priority": "中"
   },
   {
@@ -522,17 +456,6 @@
    "date": "2026-10-15",
    "time_bj": "",
    "category": "财报",
-   "title": "The Bank Of New York Mellon Corporation （BNY）财报",
-   "url": "https://www.nasdaq.com/market-activity/earnings",
-   "note": "",
-   "previous": "$1.91",
-   "consensus": "$2.25",
-   "priority": "中"
-  },
-  {
-   "date": "2026-10-15",
-   "time_bj": "",
-   "category": "财报",
    "title": "The Charles Schwab Corporation（SCHW）财报",
    "url": "https://www.nasdaq.com/market-activity/earnings",
    "note": "美东盘前",
@@ -593,6 +516,17 @@
    "note": "OCC 到期日历：10月16日为月度股票、指数期权到期日，PM 结算指数期权停止交易；AM 结算指数期权10月15日停止交易。美东日期，北京时间为次日凌晨",
    "previous": "",
    "consensus": "",
+   "priority": "中"
+  },
+  {
+   "date": "2026-10-16",
+   "time_bj": "",
+   "category": "财报",
+   "title": "HDFC Bank Limited（HDB）财报",
+   "url": "https://www.nasdaq.com/market-activity/earnings",
+   "note": "",
+   "previous": "$0.44",
+   "consensus": "$0.40",
    "priority": "中"
   },
   {
