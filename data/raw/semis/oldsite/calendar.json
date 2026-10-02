@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-10-01T08:57:56+08:00",
+ "generated_at": "2026-10-02T09:13:40+08:00",
  "events": [
   {
    "date": "2026-10-01",
@@ -8,17 +8,6 @@
    "title": "韩国9月进出口（产业通商部，全月初值）",
    "url": "https://www.index.go.kr/unity/potal/main/EachDtlPageDetail.do?idx_cd=1066",
    "note": "e-나라지표写明产业通商部每月1日发布上月进出口动向；关税厅公表日程也写“전월 잠정치 수출입동향：매월1일”。页面未写钟点",
-   "previous": "",
-   "consensus": "",
-   "priority": "高"
-  },
-  {
-   "date": "2026-10-01",
-   "time_bj": "",
-   "category": "财报",
-   "title": "美光（MU）财报",
-   "url": "",
-   "note": "笔记 盈利跟踪_2026-09-30.md 的未来 7 天财报。原名：MICRON TECHNOLOGY INC",
    "previous": "",
    "consensus": "",
    "priority": "高"
