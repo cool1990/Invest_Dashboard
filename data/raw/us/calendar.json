@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-10-02T09:13:40+08:00",
+ "generated_at": "2026-10-03T08:51:52+08:00",
  "events": [
   {
    "date": "2026-10-01",
@@ -36,61 +36,6 @@
   },
   {
    "date": "2026-10-02",
-   "time_bj": "",
-   "category": "宏观",
-   "title": "Employment Situation 发布",
-   "url": "https://fred.stlouisfed.org/release?rid=50",
-   "note": "Employment Situation",
-   "previous": "",
-   "consensus": "",
-   "priority": "中"
-  },
-  {
-   "date": "2026-10-02",
-   "time_bj": "",
-   "category": "财报",
-   "title": "耐克（NKE）财报",
-   "url": "",
-   "note": "笔记 盈利跟踪_2026-10-01.md 的未来 7 天财报。原名：NIKE, Inc.",
-   "previous": "",
-   "consensus": "",
-   "priority": "高"
-  },
-  {
-   "date": "2026-10-02",
-   "time_bj": "01:30",
-   "category": "大事",
-   "title": "美联储讲话：美国经济与货币政策",
-   "url": "https://darden-virginia.zoom.us/j/92232791521",
-   "note": "Speech - Vice Chair Philip N. Jefferson At a Talk and Q&A with Federal Reserve Board Vice Chair Philip N. Jefferson, Charlottesville, Va. 美东 1:30 p.m.。原名：U.S. Economy and Monetary Policy",
-   "previous": "",
-   "consensus": "",
-   "priority": "低"
-  },
-  {
-   "date": "2026-10-02",
-   "time_bj": "03:00",
-   "category": "大事",
-   "title": "美联储讲话：金融监管现代化",
-   "url": "https://www.youtube.com/watch?v=UosIN7C-ZCE",
-   "note": "Speech - Vice Chair for Supervision Michelle W. Bowman At the Atlantic Council’s Conversation with Michelle W. Bowman, Washington, D.C. 美东 3:00 p.m.。原名：Modernizing Financial Regulation: Initial Observations from eSLR",
-   "previous": "",
-   "consensus": "",
-   "priority": "低"
-  },
-  {
-   "date": "2026-10-02",
-   "time_bj": "03:30",
-   "category": "大事",
-   "title": "美联储讲话：全球央行",
-   "url": "https://www.federalreserve.gov/newsevents/2026-october.htm",
-   "note": "Discussion - Governor Lisa D. Cook At the Central Banking Seminar (Virtual) 美东 3:30 p.m.。原名：Global Central Banking",
-   "previous": "",
-   "consensus": "",
-   "priority": "低"
-  },
-  {
-   "date": "2026-10-02",
    "time_bj": "15:00",
    "category": "加密",
    "title": "ENA 代币解锁 4063万枚",
@@ -99,17 +44,6 @@
    "previous": "",
    "consensus": "",
    "priority": "低"
-  },
-  {
-   "date": "2026-10-02",
-   "time_bj": "22:00",
-   "category": "宏观",
-   "title": "2026年8月制造业出货、库存和订单",
-   "url": "https://www.census.gov/manufacturing/m3/",
-   "note": "美东 10:00 AM August 2026。原名：Full Report - Manufacturers' Shipments, Inventories and Orders",
-   "previous": "",
-   "consensus": "",
-   "priority": "中"
   },
   {
    "date": "2026-10-06",
@@ -201,6 +135,17 @@
   },
   {
    "date": "2026-10-08",
+   "time_bj": "16:30",
+   "category": "大事",
+   "title": "美联储讲话：经济展望",
+   "url": "https://istanbulef.org/eng/yayin/",
+   "note": "Speech - Governor Christopher J. Waller At the Central Bank of the Republic of Türkiye (TCMB) İstanbul Economic Forum, Ümraniye/İstanbul, Türkiye 美东 4:30 a.m.。原名：Economic Outlook",
+   "previous": "",
+   "consensus": "",
+   "priority": "低"
+  },
+  {
+   "date": "2026-10-08",
    "time_bj": "17:00",
    "category": "半导体",
    "title": "联发科9月营收",
@@ -242,17 +187,6 @@
    "previous": "",
    "consensus": "",
    "priority": "低"
-  },
-  {
-   "date": "2026-10-13",
-   "time_bj": "",
-   "category": "财报",
-   "title": "BlackRock, Inc.（BLK）财报",
-   "url": "https://www.nasdaq.com/market-activity/earnings",
-   "note": "",
-   "previous": "$11.55",
-   "consensus": "$14.19",
-   "priority": "中"
   },
   {
    "date": "2026-10-13",
@@ -340,6 +274,17 @@
    "note": "美东盘前",
    "previous": "$1.06",
    "consensus": "$1.16",
+   "priority": "中"
+  },
+  {
+   "date": "2026-10-14",
+   "time_bj": "",
+   "category": "财报",
+   "title": "BlackRock, Inc.（BLK）财报",
+   "url": "https://www.nasdaq.com/market-activity/earnings",
+   "note": "美东盘前",
+   "previous": "$11.55",
+   "consensus": "$14.19",
    "priority": "中"
   },
   {
@@ -968,6 +913,28 @@
    "previous": "",
    "consensus": "",
    "priority": "中"
+  },
+  {
+   "date": "2026-11-17",
+   "time_bj": "21:30",
+   "category": "宏观",
+   "title": "2026年10月零售和餐饮销售",
+   "url": "https://www.census.gov/retail",
+   "note": "美东 8:30 AM October 2026。原名：Advance Monthly Sales for Retail and Food Services",
+   "previous": "",
+   "consensus": "",
+   "priority": "中"
+  },
+  {
+   "date": "2026-11-17",
+   "time_bj": "23:00",
+   "category": "宏观",
+   "title": "制造业与贸易库存和销售",
+   "url": "https://www.census.gov/mtis/",
+   "note": "美东 10:00 AM September 2026。原名：Manufacturing and Trade: Inventories and Sales",
+   "previous": "",
+   "consensus": "",
+   "priority": "低"
   },
   {
    "date": "2026-11-19",
